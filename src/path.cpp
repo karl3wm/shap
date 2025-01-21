@@ -50,9 +50,9 @@ void GeodesicCurve::compute_smooth_geodesic(
         
         // RK4 step for geodesic equation
         auto rk4_step = [&](double u, double v, double du, double dv) {
-            std::array<double,2> accel = metric.christoffel_second(0);
+            std::array<double,2> accel = metric.christoffel_second(0, u, v);
             double d2u = -accel[0] * du * du - 2 * accel[1] * du * dv;
-            accel = metric.christoffel_second(1);
+            accel = metric.christoffel_second(1, u, v);
             double d2v = -accel[0] * du * du - 2 * accel[1] * du * dv;
             return std::make_tuple(du, dv, d2u, d2v);
         };
@@ -250,8 +250,11 @@ SurfacePoint PathSegment::evaluate(double t) const {
 }
 
 Vector PathSegment::tangent(double t) const {
-    auto metric = surface->metric_tensor(u_start, v_start);
-    auto [du, dv] = metric.raise_indices(direction.x, direction.y);
+    double local_t = (t - t_start) / (t_end - t_start);
+    double u = u_start + local_t * (u_end - u_start);
+    double v = v_start + local_t * (v_end - v_start);
+    auto metric = surface->metric_tensor(u, v);
+    auto [du, dv] = metric.raise_indices(direction.x, direction.y, u, v);
     return Vector(du, dv, 0).normalize();
 }
 
@@ -321,7 +324,7 @@ SurfacePoint PathTransition::evaluate(double t) const {
             // Linear interpolation
             return SurfacePoint(
                 "transition",
-                t, 0,
+                t, 0,  // Approximate parameters
                 start_.position * (1-t) + end_.position * t,
                 start_.normal * (1-t) + end_.normal * t,
                 start_tangent_ * (1-t) + end_tangent_ * t,

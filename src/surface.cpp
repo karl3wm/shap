@@ -30,7 +30,7 @@ std::unique_ptr<SurfacePath> Surface::create_directional_path(
     
     // Convert direction to parameter space using metric tensor
     auto metric = metric_tensor(start.u, start.v);
-    auto [du, dv] = metric.raise_indices(direction.x, direction.y);
+    auto [du, dv] = metric.raise_indices(direction.x, direction.y, start.u, start.v);
     Vector param_dir(du, dv, 0);
     
     path->add_segment(

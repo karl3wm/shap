@@ -70,6 +70,35 @@ public:
             -radius_ * std::sin(v)
         );
     }
+
+    // Second derivatives for exact metric computation
+    Point evaluate_duu(double u, double v) const override {
+        return Point(
+            -radius_ * std::cos(u) * std::sin(v),
+            -radius_ * std::sin(u) * std::sin(v),
+            0
+        );
+    }
+
+    Point evaluate_duv(double u, double v) const override {
+        return Point(
+            -radius_ * std::sin(u) * std::cos(v),
+            radius_ * std::cos(u) * std::cos(v),
+            0
+        );
+    }
+
+    Point evaluate_dvv(double u, double v) const override {
+        return Point(
+            -radius_ * std::cos(u) * std::sin(v),
+            -radius_ * std::sin(u) * std::sin(v),
+            -radius_ * std::cos(v)
+        );
+    }
+
+    bool has_second_derivatives() const override {
+        return true;
+    }
     
     // Sphere is a smooth surface
     SurfaceType surface_type() const override {
