@@ -5,28 +5,28 @@
 namespace shap {
 
 std::array<double,2> Surface2DMetricTensor::christoffel_first(
-    int i, int j, int k, double u, double v
+    int i, int j, int k, double u, double v, double h
 ) const {
     // First kind Christoffel symbols
     // Γ_ijk = 1/2 (∂_i g_jk + ∂_j g_ik - ∂_k g_ij)
     
     // Get partial derivatives using exact or numerical approximation
-    double dg_i = (i == 0) ? dg_du(j,k, u,v) : dg_dv(j,k, u,v);
-    double dg_j = (j == 0) ? dg_du(i,k, u,v) : dg_dv(i,k, u,v);
-    double dg_k = (k == 0) ? dg_du(i,j, u,v) : dg_dv(i,j, u,v);
+    double dg_i = (i == 0) ? dg_du(j,k, u,v, h) : dg_dv(j,k, u,v, h);
+    double dg_j = (j == 0) ? dg_du(i,k, u,v, h) : dg_dv(i,k, u,v, h);
+    double dg_k = (k == 0) ? dg_du(i,j, u,v, h) : dg_dv(i,j, u,v, h);
     
     return {0.5 * (dg_i + dg_j - dg_k), 0.0};
 }
 
 std::array<double,2> Surface2DMetricTensor::christoffel_second(
-    int i, double u, double v
+    int i, double u, double v, double epsilon
 ) const {
     // Second kind Christoffel symbols
     // Γ^i_jk = g^im Γ_mjk
     
     // Get inverse metric components
     double det = determinant(u,v);
-    if (std::abs(det) < 1e-10) {
+    if (std::abs(det) < epsilon) {
         return {0.0, 0.0}; // Degenerate case
     }
     

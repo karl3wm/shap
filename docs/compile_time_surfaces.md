@@ -1,7 +1,9 @@
-# Compile-Time Surface Evaluation Design
+# Compile-Time Surface Evaluation Design (Draft)
+
+> **Note**: This document represents an initial design exploration for compile-time surface evaluation features. This functionality was deprioritized in favor of focusing on runtime evaluation for better maintainability.
 
 ## Overview
-Using modern C++ features (C++17/20), we can enable compile-time specification and evaluation of parametric surfaces. This approach provides:
+Using modern C++ features (C++17/20), we could enable compile-time specification and evaluation of parametric surfaces. This approach would provide:
 - Type safety
 - Optimization opportunities
 - Compile-time error checking
@@ -22,10 +24,10 @@ struct Expression {
 // Point type supporting constexpr operations
 struct Point {
     double x, y, z;
-    
-    constexpr Point(double x, double y, double z) 
+
+    constexpr Point(double x, double y, double z)
         : x(x), y(y), z(z) {}
-        
+
     // Arithmetic operations defined as constexpr
     constexpr Point operator+(const Point& other) const {
         return Point(x + other.x, y + other.y, z + other.z);
@@ -41,11 +43,11 @@ class ParametricSurface : public Expression<ParametricSurface<F>> {
     F func;
 public:
     constexpr ParametricSurface(F f) : func(f) {}
-    
+
     constexpr Point operator()(double u, double v) const {
         return func(u, v);
     }
-    
+
     // Compile-time differential geometry
     constexpr auto metric_tensor(double u, double v) const {
         // Computed at compile-time when possible
@@ -85,9 +87,9 @@ template<typename S1, typename S2>
 struct SurfaceSum : Expression<SurfaceSum<S1, S2>> {
     S1 s1;
     S2 s2;
-    
+
     constexpr SurfaceSum(S1 a, S2 b) : s1(a), s2(b) {}
-    
+
     constexpr Point operator()(double u, double v) const {
         return s1(u, v) + s2(u, v);
     }
@@ -95,9 +97,9 @@ struct SurfaceSum : Expression<SurfaceSum<S1, S2>> {
 
 // Operator overloading for natural syntax
 template<typename S1, typename S2>
-constexpr auto operator+(const Expression<S1>& a, 
+constexpr auto operator+(const Expression<S1>& a,
                         const Expression<S2>& b) {
-    return SurfaceSum(static_cast<const S1&>(a), 
+    return SurfaceSum(static_cast<const S1&>(a),
                      static_cast<const S2&>(b));
 }
 
@@ -158,9 +160,9 @@ constexpr bool validate_surface(const S& surface) {
     constexpr auto p1 = surface(0.0, 0.0);
     constexpr auto p2 = surface(0.1, 0.1);
     constexpr auto metric = surface.metric_tensor(0.0, 0.0);
-    
-    return is_valid_point(p1) && 
-           is_valid_point(p2) && 
+
+    return is_valid_point(p1) &&
+           is_valid_point(p2) &&
            is_positive_definite(metric);
 }
 
@@ -168,4 +170,4 @@ constexpr bool validate_surface(const S& surface) {
 static_assert(validate_surface(sphere));
 ```
 
-This design enables users to define surfaces with natural mathematical syntax while leveraging the C++ type system and compile-time evaluation capabilities. The expression template approach allows for efficient composition of surface operations while maintaining the ability to perform compile-time validation and optimization.
+This design document explores potential compile-time surface evaluation capabilities. However, this functionality was deprioritized in favor of a simpler runtime implementation.

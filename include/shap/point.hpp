@@ -39,9 +39,10 @@ public:
         return std::sqrt(dot(*this));
     }
     
-    Point normalize() const {
+    // Normalize vector, with explicit tolerance for zero-length check
+    Point normalize(double epsilon = 1e-10) const {
         double len = length();
-        if (len < 1e-10) return *this;
+        if (len < epsilon) return *this;
         return *this * (1.0 / len);
     }
 };
