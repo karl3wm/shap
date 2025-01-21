@@ -1,0 +1,28 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+../include/shap/geometry.hpp
+cmath
+-
+array
+-
+
+../include/shap/surface.hpp
+geometry.hpp
+../include/shap/geometry.hpp
+functional
+-
+
+/workspaces/shap/examples/basic_demo.cpp
+shap/surface.hpp
+-
+iostream
+-
+iomanip
+-
+
