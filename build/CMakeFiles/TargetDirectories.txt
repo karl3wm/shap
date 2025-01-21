@@ -1,3 +1,0 @@
-/workspaces/shap/build/CMakeFiles/rebuild_cache.dir
-/workspaces/shap/build/CMakeFiles/edit_cache.dir
-/workspaces/shap/build/CMakeFiles/basic_demo.dir
