@@ -1,7 +1,7 @@
 #pragma once
 #include "surface.hpp"
 #include "surface_point.hpp"
-#include "geometry.hpp"
+#include "point.hpp"
 #include <vector>
 #include <memory>
 
