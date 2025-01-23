@@ -1,7 +1,6 @@
-#include "shap/coord.hpp"
 #pragma once
+#include "shap/coord.hpp"
 #include "shap/geometry_point2.hpp"
-#include "shap/metric.hpp"
 #include "shap/surface.hpp"
 #include "shap/validation_config.hpp"
 #include <cmath>
@@ -50,11 +49,13 @@ public:
         validate_vectors();  // Check for parallel vectors first
         normal_ = world_u_.cross(world_v_).normalize();
         
-        // Setup constant coefficient metric tensor
-        const double g11 = world_u_.dot(world_u_);
-        const double g12 = world_u_.dot(world_v_);
-        const double g22 = world_v_.dot(world_v_);
-        metric_tensor_ = std::make_unique<Surface2DMetricTensor>(g11, g12, g12, g22);
+        // Setup metric component derivatives (all zero for flat surface)
+        du2_du_fn_ = [](const ParamPoint2&) { return 0.0; };  // d(∂x/∂u • ∂x/∂u)/du
+        du2_dv_fn_ = [](const ParamPoint2&) { return 0.0; };  // d(∂x/∂u • ∂x/∂u)/dv
+        duv_du_fn_ = [](const ParamPoint2&) { return 0.0; };  // d(∂x/∂u • ∂x/∂v)/du
+        duv_dv_fn_ = [](const ParamPoint2&) { return 0.0; };  // d(∂x/∂u • ∂x/∂v)/dv
+        dv2_du_fn_ = [](const ParamPoint2&) { return 0.0; };  // d(∂x/∂v • ∂x/∂v)/du
+        dv2_dv_fn_ = [](const ParamPoint2&) { return 0.0; };  // d(∂x/∂v • ∂x/∂v)/dv
     }
 
     // Move operations
@@ -135,8 +136,6 @@ public:
     [[nodiscard]] const WorldVector3& world_u() const noexcept { return world_u_; }
     [[nodiscard]] const WorldVector3& world_v() const noexcept { return world_v_; }
     [[nodiscard]] const WorldVector3& normal() const noexcept { return normal_; }
-    [[nodiscard]] const Surface2DMetricTensor& metric_tensor() const noexcept { return *metric_tensor_; }
-
     /**
      * Setup path solver with given epsilon values.
      * @param vector_length_epsilon Used in world_to_parameter_space_with_epsilon() and for direction projection
@@ -305,7 +304,6 @@ private:
     WorldVector3 world_u_;
     WorldVector3 world_v_;
     WorldVector3 normal_;
-    std::unique_ptr<Surface2DMetricTensor> metric_tensor_;
     PathSolver path_solver_;
 };
 

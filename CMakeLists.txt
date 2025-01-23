@@ -29,8 +29,8 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 add_library(shap 
     src/surface.cpp
     src/path.cpp
-    src/metric.cpp
     src/surface_collection.cpp
+    src/riemannian_metric.cpp
 )
 target_include_directories(shap PUBLIC 
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

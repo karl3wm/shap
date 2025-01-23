@@ -79,7 +79,13 @@ public:
         std::optional<CurvatureFunction> gaussian = std::nullopt,
         std::optional<CurvatureFunction> mean = std::nullopt,
         std::optional<PathSolver> path_solver = std::nullopt,
-        SurfaceType type = SurfaceType::Smooth
+        SurfaceType type = SurfaceType::Smooth,
+        std::optional<MetricDerivativeFunction> du2_du = std::nullopt,
+        std::optional<MetricDerivativeFunction> du2_dv = std::nullopt,
+        std::optional<MetricDerivativeFunction> duv_du = std::nullopt,
+        std::optional<MetricDerivativeFunction> duv_dv = std::nullopt,
+        std::optional<MetricDerivativeFunction> dv2_du = std::nullopt,
+        std::optional<MetricDerivativeFunction> dv2_dv = std::nullopt
     ) noexcept
         : position_func_(std::move(pos))
         , du_func_(std::move(du))
@@ -90,7 +96,15 @@ public:
         , gaussian_curv_func_(std::move(gaussian))
         , mean_curv_func_(std::move(mean))
         , path_solver_(std::move(path_solver))
-        , type_(type) {}
+        , type_(type) {
+        // Initialize metric component derivative functions
+        du2_du_fn_ = std::move(du2_du).value_or(nullptr);
+        du2_dv_fn_ = std::move(du2_dv).value_or(nullptr);
+        duv_du_fn_ = std::move(duv_du).value_or(nullptr);
+        duv_dv_fn_ = std::move(duv_dv).value_or(nullptr);
+        dv2_du_fn_ = std::move(dv2_du).value_or(nullptr);
+        dv2_dv_fn_ = std::move(dv2_dv).value_or(nullptr);
+    }
 
     [[nodiscard]] GeometryPoint2 evaluate(const ParamPoint2& local) const override {
         WorldVector3 du(0.0, 0.0, 0.0), dv(0.0, 0.0, 0.0);
@@ -423,7 +437,13 @@ std::unique_ptr<SurfacePath> Surface::create_path(
 std::shared_ptr<Surface> Surface::create(
     PositionFunction position_func,
     std::optional<PathSolver> path_solver,
-    SurfaceType type
+    SurfaceType type,
+    std::optional<MetricDerivativeFunction> du2_du,
+    std::optional<MetricDerivativeFunction> du2_dv,
+    std::optional<MetricDerivativeFunction> duv_du,
+    std::optional<MetricDerivativeFunction> duv_dv,
+    std::optional<MetricDerivativeFunction> dv2_du,
+    std::optional<MetricDerivativeFunction> dv2_dv
 ) {
     if (!position_func) {
         throw std::invalid_argument("Position function cannot be null");
@@ -434,7 +454,13 @@ std::shared_ptr<Surface> Surface::create(
         std::nullopt, std::nullopt, std::nullopt,
         std::nullopt, std::nullopt,
         std::move(path_solver),
-        type
+        type,
+        std::move(du2_du),
+        std::move(du2_dv),
+        std::move(duv_du),
+        std::move(duv_dv),
+        std::move(dv2_du),
+        std::move(dv2_dv)
     );
 }
 

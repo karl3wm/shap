@@ -35,7 +35,7 @@ public:
         double r,
         double tangent_epsilon = 1e-10,
         double surface_distance_epsilon = 1e-6
-    ) {
+    ) : Surface() {
         if (r <= 0) {
             throw std::invalid_argument("Sphere radius must be positive");
         }
@@ -46,6 +46,7 @@ public:
         tangent_epsilon_ = tangent_epsilon;
         surface_distance_epsilon_ = surface_distance_epsilon;
         setup_path_solver();
+        setup_metric_derivatives();
     }
 
     // Move operations
@@ -229,6 +230,31 @@ private:
     double tangent_epsilon_;
     double surface_distance_epsilon_;
     PathSolver path_solver_;
+
+    void setup_metric_derivatives() noexcept {
+        // For a sphere with radius r:
+        // g11 = r²sin²(θ)
+        // g12 = 0
+        // g22 = r²
+        
+        // Therefore:
+        // ∂g11/∂u = 0 (independent of longitude)
+        dg11_du_fn_ = [](const ParamPoint2&) { return 0.0; };
+        
+        // ∂g11/∂v = 2r²sin(θ)cos(θ) = r²sin(2θ)
+        dg11_dv_fn_ = [this](const ParamPoint2& p) {
+            const double theta = p.v() * PI;
+            return radius_ * radius_ * std::sin(2 * theta);
+        };
+        
+        // g12 is constant 0, so derivatives are 0
+        dg12_du_fn_ = [](const ParamPoint2&) { return 0.0; };
+        dg12_dv_fn_ = [](const ParamPoint2&) { return 0.0; };
+        
+        // g22 is constant r², so derivatives are 0
+        dg22_du_fn_ = [](const ParamPoint2&) { return 0.0; };
+        dg22_dv_fn_ = [](const ParamPoint2&) { return 0.0; };
+    }
 };
 
 /**

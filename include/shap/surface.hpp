@@ -1,5 +1,5 @@
-#include "coord.hpp"
 #pragma once
+#include "coord.hpp"
 #include "edge_connection.hpp"
 #include "edge_descriptor.hpp"
 #include "geometry_point2.hpp"
@@ -17,10 +17,11 @@ namespace shap {
 class SurfacePoint;
 class SurfacePath;
 
-// Function types for surface creation
+// Function types for surface creation and metric calculations
 using PositionFunction = std::function<WorldPoint3(const ParamPoint2&)>;
 using DerivativeFunction = std::function<WorldVector3(const ParamPoint2&)>;
 using CurvatureFunction = std::function<double(const ParamPoint2&)>;
+using MetricDerivativeFunction = std::function<double(const ParamPoint2&)>;
 
 // Path solver returns intersection with surface boundary
 struct PathIntersection {
@@ -57,7 +58,11 @@ using PathSolver = std::function<std::optional<PathIntersection>(
     double max_world_distance
 )>;
 
+// Forward declarations
+class RiemannianMetric;
+
 class Surface {
+    friend class RiemannianMetric;
 public:
     virtual ~Surface() = default;
     
@@ -71,6 +76,14 @@ public:
 
 protected:
     Surface() = default;
+
+    // Metric component derivative functions
+    MetricDerivativeFunction du2_du_fn_;  // d(du·du)/du
+    MetricDerivativeFunction du2_dv_fn_;  // d(du·du)/dv
+    MetricDerivativeFunction duv_du_fn_;  // d(du·dv)/du
+    MetricDerivativeFunction duv_dv_fn_;  // d(du·dv)/dv
+    MetricDerivativeFunction dv2_du_fn_;  // d(dv·dv)/du
+    MetricDerivativeFunction dv2_dv_fn_;  // d(dv·dv)/dv
 
 public:
     /**
@@ -174,12 +187,37 @@ protected:
     }
 
 public:
+    // Metric component derivative accessors
+    [[nodiscard]] double du2_du(const ParamPoint2& param) const noexcept {
+        return du2_du_fn_ ? du2_du_fn_(param) : 0.0;
+    }
+    [[nodiscard]] double du2_dv(const ParamPoint2& param) const noexcept {
+        return du2_dv_fn_ ? du2_dv_fn_(param) : 0.0;
+    }
+    [[nodiscard]] double duv_du(const ParamPoint2& param) const noexcept {
+        return duv_du_fn_ ? duv_du_fn_(param) : 0.0;
+    }
+    [[nodiscard]] double duv_dv(const ParamPoint2& param) const noexcept {
+        return duv_dv_fn_ ? duv_dv_fn_(param) : 0.0;
+    }
+    [[nodiscard]] double dv2_du(const ParamPoint2& param) const noexcept {
+        return dv2_du_fn_ ? dv2_du_fn_(param) : 0.0;
+    }
+    [[nodiscard]] double dv2_dv(const ParamPoint2& param) const noexcept {
+        return dv2_dv_fn_ ? dv2_dv_fn_(param) : 0.0;
+    }
+
     // Factory methods
-    // Factory methods with updated parameter types
     [[nodiscard]] static std::shared_ptr<Surface> create(
         PositionFunction position_func,
         std::optional<PathSolver> path_solver = std::nullopt,
-        SurfaceType type = SurfaceType::Generic
+        SurfaceType type = SurfaceType::Generic,
+        std::optional<MetricDerivativeFunction> du2_du = std::nullopt,
+        std::optional<MetricDerivativeFunction> du2_dv = std::nullopt,
+        std::optional<MetricDerivativeFunction> duv_du = std::nullopt,
+        std::optional<MetricDerivativeFunction> duv_dv = std::nullopt,
+        std::optional<MetricDerivativeFunction> dv2_du = std::nullopt,
+        std::optional<MetricDerivativeFunction> dv2_dv = std::nullopt
     );
 };
 
