@@ -3,22 +3,51 @@
 ## Core Class Files
 
 ### Surface Classes
-- `parametric_surface.hpp`: Base abstract class for parametric surfaces
-- `polynomial_surface.hpp`: Implementation for polynomial basis surfaces
-- `nurbs_surface.hpp`: Implementation for NURBS surfaces (future extension)
+- `surface.hpp`: Base abstract class for parametric surfaces
+- `surface_collection.hpp`: Graph structure managing connected surfaces
+- `surface_point.hpp`: Point on a surface with geometric properties
+- `surface_edge.hpp`: Edge representation for surface boundaries
 
-### Edge Classes
-- `parametric_edge.hpp`: Base class for surface boundary curves
-- `surface_connection.hpp`: Class handling the joining of two surfaces along edges
+### Connection System
+The surface connection system uses an explicit graph structure where surfaces are nodes and connections are edges. This enables proper traversal and maintains clear topology information.
 
-### Support Classes
-- `surface_point.hpp`: Class representing a point on a surface with geometric properties
-- `metric_tensor.hpp`: Class for handling the Riemannian metric calculations
+```cpp
+// Core connection structure
+struct SurfaceConnection {
+    Surface* surface1;
+    Surface* surface2;
+    EdgeType edge1;
+    EdgeType edge2;
+    ConnectionType type;
+    TransitionMapping mapping;
+};
+
+// Surface collection as graph
+class SurfaceCollection {
+    std::vector<std::unique_ptr<Surface>> surfaces;
+    std::vector<SurfaceConnection> connections;
+    // ... methods for graph traversal and path finding
+};
+```
+
+### Surface Points and Edges
+Surface points maintain direct references to their containing surface and edge information when at boundaries:
+
+```cpp
+class SurfacePoint {
+    Surface* surface;           // Direct reference to containing surface
+    double u, v;               // Parameter coordinates
+    Point position;            // 3D position
+    Vector normal;             // Surface normal
+    Vector du, dv;            // Tangent vectors
+    std::optional<EdgeInfo> edge_info;  // Present when point is on edge
+};
+```
 
 ## Adaptive Tessellation Algorithm
 
 ### Overview
-The proposed tessellation algorithm adaptively subdivides the parameter space based on local geometric properties and a specified error tolerance. The algorithm ensures that the resulting mesh accurately represents the surface within the given tolerance while respecting surface features.
+The tessellation algorithm adaptively subdivides the parameter space based on local geometric properties and a specified error tolerance. The algorithm ensures that the resulting mesh accurately represents the surface within the given tolerance while respecting surface features.
 
 ### Algorithm Steps
 
@@ -111,3 +140,67 @@ The algorithm uses multiple error metrics to guide subdivision:
    - Balance between accuracy and mesh complexity
 
 The tessellation algorithm prioritizes accuracy over speed, focusing on producing high-quality meshes suitable for 3D printing. The adaptive nature ensures that regions with high curvature or geometric features receive finer tessellation while keeping the mesh complexity manageable in simpler regions.
+
+## Surface Traversal Algorithm
+
+### Overview
+The traversal system enables navigation across connected surfaces through explicit edge transitions. This maintains proper topology while supporting various connection types (smooth, sharp, etc).
+
+### Algorithm Steps
+
+1. **Surface Location**
+   ```cpp
+   // Locate point on surface
+   SurfacePoint locate_point(Surface* surface, double u, double v) {
+       auto point = surface->evaluate(u, v);
+       if (is_on_edge(u, v))
+           point.edge_info = compute_edge_info(u, v);
+       return point;
+   }
+   ```
+
+2. **Edge Detection**
+   ```cpp
+   // Check if point is on surface edge
+   bool is_on_edge(double u, double v) {
+       return u <= edge_tolerance || u >= 1.0 - edge_tolerance ||
+              v <= edge_tolerance || v >= 1.0 - edge_tolerance;
+   }
+   ```
+
+3. **Connection Traversal**
+   ```cpp
+   // Find and traverse surface connection
+   std::optional<SurfacePoint> traverse_connection(
+       const SurfacePoint& point,
+       const Vector& direction
+   ) {
+       if (!point.edge_info)
+           return std::nullopt;
+           
+       auto connection = find_connection(point.surface, point.edge_info->edge);
+       if (!connection)
+           return std::nullopt;
+           
+       return connection->mapping.map_point(point);
+   }
+   ```
+
+### Implementation Considerations
+
+1. **Efficiency**
+   - Cache surface connections for quick traversal
+   - Use spatial indexing for edge detection
+   - Optimize common transition cases
+
+2. **Robustness**
+   - Handle degenerate cases at surface boundaries
+   - Maintain consistent orientation across transitions
+   - Support various connection types (C0, C1, etc)
+
+3. **Extensibility**
+   - Support for different surface types
+   - Pluggable connection strategies
+   - Custom transition mappings
+
+The design enables complex surface networks while maintaining proper mathematical and topological relationships between surfaces, with a focus on producing high-quality meshes suitable for 3D printing applications.

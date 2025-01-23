@@ -1,88 +1,164 @@
+#include "coord.hpp"
 #pragma once
+#include "geometry_point2.hpp"
 #include "surface.hpp"
-#include "surface_point.hpp"
-#include "point.hpp"
-#include <vector>
 #include <memory>
+#include <vector>
+#include <stdexcept>
 
 namespace shap {
 
-// Base class for paths on surfaces
+/**
+ * Abstract base class for paths on surfaces.
+ *
+ * A path represents a curve that lies on one or more surfaces. The curve
+ * is parameterized by t ∈ [0,1], where:
+ * - t=0 corresponds to the start point
+ * - t=1 corresponds to the end point (or last point before surface boundary)
+ */
 class SurfacePath {
 public:
     virtual ~SurfacePath() = default;
     
-    // Core path evaluation methods
-    virtual SurfacePoint evaluate(double t) const = 0;
-    virtual Vector tangent(double t) const = 0;
-    virtual Vector normal(double t) const = 0;
+    /**
+     * Evaluate the path at parameter t.
+     *
+     * @param t Path parameter in [0,1]
+     * @throws std::invalid_argument if t is outside [0,1]
+     *
+     * Post-conditions:
+     * - Returns a point that lies on the surface(s)
+     * - Position varies continuously with t
+     * - For t=0, returns path start point
+     * - For t=1, returns path end point
+     */
+    [[nodiscard]] virtual GeometryPoint2 evaluate(double t) const = 0;
+    
+    /**
+     * Get path tangent vector at parameter t.
+     *
+     * @param t Path parameter in [0,1]
+     * @throws std::invalid_argument if t is outside [0,1]
+     *
+     * Post-conditions:
+     * - Returns normalized tangent vector
+     * - Vector lies in surface tangent plane
+     * - Direction matches path orientation
+     */
+    [[nodiscard]] virtual WorldVector3 tangent(double t) const = 0;
+    
+    /**
+     * Get surface normal at parameter t.
+     *
+     * @param t Path parameter in [0,1]
+     * @throws std::invalid_argument if t is outside [0,1]
+     *
+     * Post-conditions:
+     * - Returns normalized surface normal vector
+     * - Vector is perpendicular to path tangent
+     */
+    [[nodiscard]] virtual WorldVector3 normal(double t) const = 0;
+
+protected:
+    // Validate parameter t is in [0,1]
+    static void validate_parameter(double t) {
+        if (t < 0.0 || t > 1.0) {
+            throw std::invalid_argument("Path parameter t must be in [0,1]");
+        }
+    }
 };
 
-// Geodesic curve between two points
-class GeodesicCurve : public SurfacePath {
+/**
+ * Geodesic curve between two points on a surface.
+ *
+ * A geodesic is a curve that locally minimizes path length on the surface.
+ * For smooth surfaces, it follows the surface curvature.
+ * For developable surfaces, it's a straight line in the developed plane.
+ */
+class GeodesicCurve final : public SurfacePath {
 public:
     GeodesicCurve(
         std::shared_ptr<Surface> surface,
-        const SurfacePoint& start,
-        const SurfacePoint& end
-    ) : surface_(surface) {
-        if (surface->surface_type() == Surface::SurfaceType::Smooth) {
-            compute_smooth_geodesic(start, end);
-        } else if (surface->surface_type() == Surface::SurfaceType::Developable) {
-            compute_developable_geodesic(start, end);
-        } else {
-            throw std::runtime_error("Cannot compute geodesic on non-smooth surface");
-        }
-    }
+        const GeometryPoint2& start,
+        const GeometryPoint2& end
+    );
     
-    SurfacePoint evaluate(double t) const override;
-    Vector tangent(double t) const override;
-    Vector normal(double t) const override;
+    [[nodiscard]] GeometryPoint2 evaluate(double t) const override;
+    [[nodiscard]] WorldVector3 tangent(double t) const override;
+    [[nodiscard]] WorldVector3 normal(double t) const override;
 
 private:
-    void compute_smooth_geodesic(const SurfacePoint& start, const SurfacePoint& end);
-    void compute_developable_geodesic(const SurfacePoint& start, const SurfacePoint& end);
+    void compute_smooth_geodesic(
+        const GeometryPoint2& start,
+        const GeometryPoint2& end
+    );
+    
+    void compute_developable_geodesic(
+        const GeometryPoint2& start,
+        const GeometryPoint2& end
+    );
     
     std::shared_ptr<Surface> surface_;
-    std::vector<Point2D> points_;  // Points in parameter space (u,v)
-    double t_start_;
-    double t_end_;
+    std::vector<GeometryPoint2> points_;
 };
 
-// Single segment of a path on one surface
-class PathSegment : public SurfacePath {
+// Path segment on a single surface
+class PathSegment final : public SurfacePath {
 public:
-    explicit PathSegment(std::shared_ptr<Surface> surface)
-        : surface_(surface) {}
+    explicit PathSegment(std::shared_ptr<Surface> surface) noexcept
+        : surface_(std::move(surface)) {
+        // Pre-allocate space for typical path size
+        t_values_.reserve(100);
+        u_values_.reserve(100);
+        v_values_.reserve(100);
+    }
+    
+    // Move operations
+    PathSegment(PathSegment&&) noexcept = default;
+    PathSegment& operator=(PathSegment&&) noexcept = default;
+    
+    // Prevent copying
+    PathSegment(const PathSegment&) = delete;
+    PathSegment& operator=(const PathSegment&) = delete;
     
     void add_point(double t, double u, double v);
     
-    SurfacePoint evaluate(double t) const override;
-    Vector tangent(double t) const override;
-    Vector normal(double t) const override;
+    [[nodiscard]] GeometryPoint2 evaluate(double t) const override;
+    [[nodiscard]] WorldVector3 tangent(double t) const override;
+    [[nodiscard]] WorldVector3 normal(double t) const override;
     
-    const std::vector<Point>& points() const { return points_; }
-    std::shared_ptr<Surface> surface() const { return surface_; }
+    // Accessors for path data
+    [[nodiscard]] const std::vector<double>& t_values() const noexcept { return t_values_; }
+    [[nodiscard]] const std::vector<double>& u_values() const noexcept { return u_values_; }
+    [[nodiscard]] const std::vector<double>& v_values() const noexcept { return v_values_; }
+    [[nodiscard]] std::shared_ptr<Surface> surface() const noexcept { return surface_; }
 
 private:
     std::shared_ptr<Surface> surface_;
-    std::vector<Point> points_;  // Points with (t,u,v) coordinates
+    std::vector<double> t_values_;
+    std::vector<double> u_values_;
+    std::vector<double> v_values_;
 };
 
-// Path that can transition between surfaces
-class TransitionPath : public SurfacePath {
+// Path that transitions between multiple surfaces
+class TransitionPath final : public SurfacePath {
 public:
     void add_segment(
         std::shared_ptr<Surface> surface,
         double t_start, double t_end,
         double u_start, double u_end,
         double v_start, double v_end,
-        const Vector& direction
+        const WorldVector3& direction
     );
     
-    SurfacePoint evaluate(double t) const override;
-    Vector tangent(double t) const override;
-    Vector normal(double t) const override;
+    [[nodiscard]] GeometryPoint2 evaluate(double t) const override;
+    [[nodiscard]] WorldVector3 tangent(double t) const override;
+    [[nodiscard]] WorldVector3 normal(double t) const override;
+
+    // Access segments
+    [[nodiscard]] const std::vector<std::unique_ptr<PathSegment>>& segments() const noexcept { 
+        return segments_; 
+    }
 
 private:
     std::vector<std::unique_ptr<PathSegment>> segments_;
