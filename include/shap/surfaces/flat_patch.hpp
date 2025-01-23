@@ -5,6 +5,7 @@
 #include "shap/validation_config.hpp"
 #include <cmath>
 #include <stdexcept>
+#include <functional>
 
 namespace shap {
 namespace surfaces {
@@ -30,127 +31,98 @@ namespace surfaces {
  * - All curvatures are zero (planar surface)
  * - Geodesics are straight lines
  */
-class FlatPatch final : public Surface {
-public:
-    /**
-     * Construct a flat parametric patch.
-     * @param origin Origin point of the patch
-     * @param world_u First basis vector
-     * @param world_v Second basis vector
-     */
-    explicit FlatPatch(
-        WorldPoint3 origin,
-        WorldVector3 world_u,
-        WorldVector3 world_v
-    ) : origin_(std::move(origin))
-      , world_u_(std::move(world_u))
-      , world_v_(std::move(world_v))
-      , normal_(0, 0, 0) {
-        validate_vectors();  // Check for parallel vectors first
-        normal_ = world_u_.cross(world_v_).normalize();
-        
-        // Setup metric component derivatives (all zero for flat surface)
-        du2_du_fn_ = [](const ParamPoint2&) { return 0.0; };  // d(∂x/∂u • ∂x/∂u)/du
-        du2_dv_fn_ = [](const ParamPoint2&) { return 0.0; };  // d(∂x/∂u • ∂x/∂u)/dv
-        duv_du_fn_ = [](const ParamPoint2&) { return 0.0; };  // d(∂x/∂u • ∂x/∂v)/du
-        duv_dv_fn_ = [](const ParamPoint2&) { return 0.0; };  // d(∂x/∂u • ∂x/∂v)/dv
-        dv2_du_fn_ = [](const ParamPoint2&) { return 0.0; };  // d(∂x/∂v • ∂x/∂v)/du
-        dv2_dv_fn_ = [](const ParamPoint2&) { return 0.0; };  // d(∂x/∂v • ∂x/∂v)/dv
+namespace {
+
+/**
+ * Helper to validate basis vectors for degenerate configurations using validation epsilons
+ * from ValidationConfig.
+ */
+void validate_vectors(const WorldVector3& world_u, const WorldVector3& world_v) {
+    const auto& config = ValidationConfig::instance();
+    if (world_u.length_squared() < config.vector_length_epsilon()) {
+        throw std::invalid_argument("world_u vector cannot be zero");
     }
+    if (world_v.length_squared() < config.vector_length_epsilon()) {
+        throw std::invalid_argument("world_v vector cannot be zero");
+    }
+    if (std::abs(world_u.normalize().dot(world_v.normalize())) > 1.0 - config.vector_parallel_epsilon()) {
+        throw std::invalid_argument("world_u and world_v vectors cannot be parallel");
+    }
+}
 
-    // Move operations
-    FlatPatch(FlatPatch&&) noexcept = default;
-    FlatPatch& operator=(FlatPatch&&) noexcept = default;
+} // anonymous namespace
 
-    // Prevent copying
-    FlatPatch(const FlatPatch&) = delete;
-    FlatPatch& operator=(const FlatPatch&) = delete;
-
-    /**
-     * Convert a world space position to parameter space coordinates.
-     * @param pos World space position to convert
-     * @param vector_length_epsilon Used to handle degenerate cases where basis vectors are nearly parallel
-     * @return Parameter space coordinates
-     * 
-     * Called from:
-     * - setup_path_solver() in this file
-     */
-    [[nodiscard]] ParamPoint3 world_to_param(const WorldPoint3& pos) const override {
-        // Solve linear system: pos - origin = u*world_u + v*world_v
-        const WorldVector3 rel_pos = pos - origin_;
-        
-        // Project point onto surface normal to get signed distance
-        const double normal_dist = rel_pos.dot(normal_);
-        
-        // Project point onto surface plane
-        const WorldVector3 planar_pos = rel_pos - normal_ * normal_dist;
-        
-        // Use Cramer's rule for 2x2 system
-        const double det = world_u_.cross(world_v_).length();
-        if (det < ValidationConfig::instance().vector_length_epsilon()) {
-            throw std::invalid_argument(
-                "Cannot compute local coordinates: basis vectors are nearly parallel"
-            );
+/**
+ * Create a flat parametric patch.
+ * @param origin Origin point of the patch
+ * @param world_u First basis vector
+ * @param world_v Second basis vector
+ * @param vector_length_epsilon Used in world_to_parameter_space_with_epsilon() and setup_path_solver()
+ * @param parameter_bound_epsilon Used in setup_path_solver() for parameter bound checks
+ * @return Shared pointer to created surface
+ */
+[[nodiscard]] std::shared_ptr<Surface> create_flat_patch(
+    WorldPoint3 origin,
+    WorldVector3 world_u,
+    WorldVector3 world_v,
+    double vector_length_epsilon,
+    double parameter_bound_epsilon
+) {
+    // Create derived class instance to bind member functions from
+    class FlatPatchImpl {
+    public:
+        FlatPatchImpl(WorldPoint3 origin_, WorldVector3 world_u_, WorldVector3 world_v_)
+            : origin(std::move(origin_))
+            , world_u(std::move(world_u_))
+            , world_v(std::move(world_v_))
+        {
+            validate_vectors(world_u, world_v);
+            normal = world_u.cross(world_v).normalize();
         }
-        
-        // Compute parameter coordinates
-        const double u = planar_pos.cross(world_v_).dot(normal_) / det;
-        const double v = world_u_.cross(planar_pos).dot(normal_) / det;
-        
-        return ParamPoint3(u, v, normal_dist);
-    }
 
-    /**
-     * Evaluate surface at parameter space point.
-     * 
-     * @param local Parameter space coordinates
-     * @return GeometryPoint2 containing full geometric information
-     * @throws std::invalid_argument if coordinates are invalid
-     */
-    [[nodiscard]] GeometryPoint2 evaluate(const ParamPoint2& local) const override {
-        // Linear mapping from parameter space to world space
-        const WorldPoint3 position = origin_ + 
-            world_u_ * local.u() + 
-            world_v_ * local.v();
-        
-        return GeometryPoint2(
-            this,
-            local,
-            position,
-            normal_,      // Normal is constant
-            world_u_,     // First coordinate basis vector
-            world_v_      // Second coordinate basis vector
-        );
-    }
+        WorldPoint3 position(const ParamPoint2& local) const {
+            return origin + world_u * local.u() + world_v * local.v();
+        }
 
-    [[nodiscard]] std::optional<PathSolver> get_path_solver() const noexcept override {
-        return path_solver_;
-    }
+        WorldVector3 du(const ParamPoint2&) const { return world_u; }
+        WorldVector3 dv(const ParamPoint2&) const { return world_v; }
+        WorldVector3 duu(const ParamPoint2&) const { return WorldVector3(0, 0, 0); }
+        WorldVector3 duv(const ParamPoint2&) const { return WorldVector3(0, 0, 0); }
+        WorldVector3 dvv(const ParamPoint2&) const { return WorldVector3(0, 0, 0); }
+        double gaussian(const ParamPoint2&) const { return 0.0; }
+        double mean(const ParamPoint2&) const { return 0.0; }
 
-    [[nodiscard]] SurfaceType surface_type() const noexcept override {
-        return SurfaceType::Developable;
-    }
+        ParamPoint3 world_to_param(const WorldPoint3& pos) const {
+            // Solve linear system: pos - origin = u*world_u + v*world_v
+            const WorldVector3 rel_pos = pos - origin;
+            
+            // Project point onto surface normal to get signed distance
+            const double normal_dist = rel_pos.dot(normal);
+            
+            // Project point onto surface plane
+            const WorldVector3 planar_pos = rel_pos - normal * normal_dist;
+            
+            // Use Cramer's rule for 2x2 system
+            const double det = world_u.cross(world_v).length();
+            if (det < ValidationConfig::instance().vector_length_epsilon()) {
+                throw std::invalid_argument(
+                    "Cannot compute local coordinates: basis vectors are nearly parallel"
+                );
+            }
+            
+            // Compute parameter coordinates
+            const double u = planar_pos.cross(world_v).dot(normal) / det;
+            const double v = world_u.cross(planar_pos).dot(normal) / det;
+            
+            return ParamPoint3(u, v, normal_dist);
+        }
 
-    // Access geometry
-    [[nodiscard]] const WorldPoint3& origin() const noexcept { return origin_; }
-    [[nodiscard]] const WorldVector3& world_u() const noexcept { return world_u_; }
-    [[nodiscard]] const WorldVector3& world_v() const noexcept { return world_v_; }
-    [[nodiscard]] const WorldVector3& normal() const noexcept { return normal_; }
-    /**
-     * Setup path solver with given epsilon values.
-     * @param vector_length_epsilon Used in world_to_parameter_space_with_epsilon() and for direction projection
-     * @param parameter_bound_epsilon Used in check_intersection() for parameter bound checks
-     * 
-     * Called from:
-     * - create_flat_patch() in this file
-     */
-    void setup_path_solver(double vector_length_epsilon, double parameter_bound_epsilon) noexcept {
-        path_solver_ = [this, vector_length_epsilon, parameter_bound_epsilon](
-            const WorldPoint3& start, const WorldVector3& dir, double max_t)
-            -> std::optional<PathIntersection> {
+        std::optional<PathIntersection> solve_path(
+            const WorldPoint3& start, const WorldVector3& dir, double max_t,
+            double vector_length_epsilon, double parameter_bound_epsilon) const {
             
             // Project direction onto face plane
-            WorldVector3 planar_dir = dir - dir.dot(normal_) * normal_;
+            WorldVector3 planar_dir = dir - dir.dot(normal) * normal;
             const double planar_length = planar_dir.length();
             if (planar_length < vector_length_epsilon) {
                 return std::nullopt;  // Direction perpendicular to face
@@ -179,43 +151,75 @@ public:
             double edge_param = 0.0;
             bool found = false;
             
-            // Check all bounds using normalized parameter direction
-            found |= check_intersection(
-                start_local.u(), param_dir.first / param_length, 0,
-                ParamIndex::U, ParamBound::Lower, start_local.v(),
-                param_dir, param_length, min_t, hit_param, hit_bound, edge_param,
-                parameter_bound_epsilon
-            );
-            found |= check_intersection(
-                start_local.u(), param_dir.first / param_length, 1,
-                ParamIndex::U, ParamBound::Upper, start_local.v(),
-                param_dir, param_length, min_t, hit_param, hit_bound, edge_param,
-                parameter_bound_epsilon
-            );
-            found |= check_intersection(
-                start_local.v(), param_dir.second / param_length, 0,
-                ParamIndex::V, ParamBound::Lower, start_local.u(),
-                param_dir, param_length, min_t, hit_param, hit_bound, edge_param,
-                parameter_bound_epsilon
-            );
-            found |= check_intersection(
-                start_local.v(), param_dir.second / param_length, 1,
-                ParamIndex::V, ParamBound::Upper, start_local.u(),
-                param_dir, param_length, min_t, hit_param, hit_bound, edge_param,
-                parameter_bound_epsilon
-            );
+            // Check U parameter bounds
+            const double d_u = param_dir.first / param_length;
+            if (std::abs(d_u) > parameter_bound_epsilon) {
+                // Check U=0 bound
+                double t = -start_local.u() / d_u;
+                if (t > 0 && t < min_t) {
+                    const double v_at_t = start_local.v() + param_dir.second * t / param_length;
+                    if (v_at_t >= -parameter_bound_epsilon && v_at_t <= 1.0 + parameter_bound_epsilon) {
+                        min_t = t;
+                        hit_param = ParamIndex::U;
+                        hit_bound = ParamBound::Lower;
+                        edge_param = std::clamp(v_at_t, 0.0, 1.0);
+                        found = true;
+                    }
+                }
+                // Check U=1 bound
+                t = (1.0 - start_local.u()) / d_u;
+                if (t > 0 && t < min_t) {
+                    const double v_at_t = start_local.v() + param_dir.second * t / param_length;
+                    if (v_at_t >= -parameter_bound_epsilon && v_at_t <= 1.0 + parameter_bound_epsilon) {
+                        min_t = t;
+                        hit_param = ParamIndex::U;
+                        hit_bound = ParamBound::Upper;
+                        edge_param = std::clamp(v_at_t, 0.0, 1.0);
+                        found = true;
+                    }
+                }
+            }
+
+            // Check V parameter bounds
+            const double d_v = param_dir.second / param_length;
+            if (std::abs(d_v) > parameter_bound_epsilon) {
+                // Check V=0 bound
+                double t = -start_local.v() / d_v;
+                if (t > 0 && t < min_t) {
+                    const double u_at_t = start_local.u() + param_dir.first * t / param_length;
+                    if (u_at_t >= -parameter_bound_epsilon && u_at_t <= 1.0 + parameter_bound_epsilon) {
+                        min_t = t;
+                        hit_param = ParamIndex::V;
+                        hit_bound = ParamBound::Lower;
+                        edge_param = std::clamp(u_at_t, 0.0, 1.0);
+                        found = true;
+                    }
+                }
+                // Check V=1 bound
+                t = (1.0 - start_local.v()) / d_v;
+                if (t > 0 && t < min_t) {
+                    const double u_at_t = start_local.u() + param_dir.first * t / param_length;
+                    if (u_at_t >= -parameter_bound_epsilon && u_at_t <= 1.0 + parameter_bound_epsilon) {
+                        min_t = t;
+                        hit_param = ParamIndex::V;
+                        hit_bound = ParamBound::Upper;
+                        edge_param = std::clamp(u_at_t, 0.0, 1.0);
+                        found = true;
+                    }
+                }
+            }
             
             if (!found) return std::nullopt;
             
             // Convert parameter space distance to world space
-            const double world_t = min_t * (hit_param == ParamIndex::U ? world_u_.length() : world_v_.length());
+            const double world_t = min_t * (hit_param == ParamIndex::U ? world_u.length() : world_v.length());
             
             // Compute intersection position using parameter space mapping
             const double u = hit_param == ParamIndex::U ? 
                 static_cast<double>(hit_bound) : start_local.u();
             const double v = hit_param == ParamIndex::V ? 
                 static_cast<double>(hit_bound) : start_local.v();
-            const WorldPoint3 position = origin_ + world_u_ * u + world_v_ * v;
+            const WorldPoint3 position = origin + world_u * u + world_v * v;
             
             return PathIntersection(
                 world_t,
@@ -224,116 +228,48 @@ public:
                 hit_bound,
                 edge_param
             );
-        };
-    }
-
-private:
-    /**
-     * Validate basis vectors for degenerate configurations using validation epsilons
-     * from ValidationConfig.
-     * 
-     * Called from:
-     * - FlatPatch constructor in this file
-     */
-    void validate_vectors() {
-        const auto& config = ValidationConfig::instance();
-        if (world_u_.length_squared() < config.vector_length_epsilon()) {
-            throw std::invalid_argument("world_u vector cannot be zero");
         }
-        if (world_v_.length_squared() < config.vector_length_epsilon()) {
-            throw std::invalid_argument("world_v vector cannot be zero");
-        }
-        if (std::abs(world_u_.normalize().dot(world_v_.normalize())) > 1.0 - config.vector_parallel_epsilon()) {
-            throw std::invalid_argument("world_u and world_v vectors cannot be parallel");
-        }
-    }
 
-    /**
-     * Helper to check intersection with parameter bound.
-     * @param curr_param Current parameter value
-     * @param d_param Parameter direction
-     * @param bound_val Bound value to check against
-     * @param param Which parameter (u or v)
-     * @param bound Which bound (lower or upper)
-     * @param other_param Other parameter value
-     * @param param_dir Parameter space direction
-     * @param param_length Parameter direction length
-     * @param min_t Current minimum intersection time
-     * @param hit_param Output: parameter that was hit
-     * @param hit_bound Output: bound that was hit
-     * @param edge_param Output: parameter value along edge
-     * @param parameter_bound_epsilon Threshold for parameter bound checks
-     * @return True if intersection found
-     * 
-     * Called from:
-     * - setup_path_solver() in this file
-     */
-    [[nodiscard]] bool check_intersection(
-        double curr_param,
-        double d_param,
-        double bound_val,
-        ParamIndex param,
-        ParamBound bound,
-        double other_param,
-        const std::pair<double, double>& param_dir,
-        double param_length,
-        double& min_t,
-        ParamIndex& hit_param,
-        ParamBound& hit_bound,
-        double& edge_param,
-        double parameter_bound_epsilon
-    ) const noexcept {
-        if (std::abs(d_param) > parameter_bound_epsilon) {
-            const double t = (bound_val - curr_param) / d_param;
-            if (t > 0 && t < min_t) {
-                // Check if intersection point is within other parameter bounds
-                const double other_at_t = other_param + param_dir.second * t / param_length;
-                if (other_at_t >= -parameter_bound_epsilon && other_at_t <= 1.0 + parameter_bound_epsilon) {
-                    min_t = t;
-                    hit_param = param;
-                    hit_bound = bound;
-                    edge_param = std::clamp(other_at_t, 0.0, 1.0);
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
+        double du2_du(const ParamPoint2&) const { return 0.0; }
+        double du2_dv(const ParamPoint2&) const { return 0.0; }
+        double duv_du(const ParamPoint2&) const { return 0.0; }
+        double duv_dv(const ParamPoint2&) const { return 0.0; }
+        double dv2_du(const ParamPoint2&) const { return 0.0; }
+        double dv2_dv(const ParamPoint2&) const { return 0.0; }
 
-    WorldPoint3 origin_;
-    WorldVector3 world_u_;
-    WorldVector3 world_v_;
-    WorldVector3 normal_;
-    PathSolver path_solver_;
-};
+    private:
+        WorldPoint3 origin;
+        WorldVector3 world_u;
+        WorldVector3 world_v;
+        WorldVector3 normal;
+    };
 
-/**
- * Create a flat patch with the given origin and basis vectors.
- * @param origin Origin point of the patch
- * @param world_u First basis vector
- * @param world_v Second basis vector
- * @param vector_length_epsilon Used in world_to_parameter_space_with_epsilon() and setup_path_solver()
- * @param parameter_bound_epsilon Used in setup_path_solver() for parameter bound checks
- * @return Shared pointer to created surface
- * 
- * Called from:
- * - path_length_tests.cpp
- * - space_transformation_tests.cpp
- */
-[[nodiscard]] inline std::shared_ptr<Surface> create_flat_patch(
-    WorldPoint3 origin,
-    WorldVector3 world_u,
-    WorldVector3 world_v,
-    double vector_length_epsilon,
-    double parameter_bound_epsilon
-) {
-    auto patch = std::make_shared<FlatPatch>(
-        std::move(origin),
-        std::move(world_u),
-        std::move(world_v)
+    // Create implementation object
+    auto impl = std::make_shared<FlatPatchImpl>(origin, world_u, world_v);
+
+    // Create surface using std::bind to member functions
+    using namespace std::placeholders;
+    return std::make_shared<Surface>(
+        std::bind(&FlatPatchImpl::position, impl, _1),
+        std::bind(&FlatPatchImpl::du, impl, _1),
+        std::bind(&FlatPatchImpl::dv, impl, _1),
+        std::bind(&FlatPatchImpl::duu, impl, _1),
+        std::bind(&FlatPatchImpl::duv, impl, _1),
+        std::bind(&FlatPatchImpl::dvv, impl, _1),
+        std::bind(&FlatPatchImpl::gaussian, impl, _1),
+        std::bind(&FlatPatchImpl::mean, impl, _1),
+        std::bind(&FlatPatchImpl::world_to_param, impl, _1),
+        [impl, vector_length_epsilon, parameter_bound_epsilon](const WorldPoint3& start, const WorldVector3& dir, double max_t) {
+            return impl->solve_path(start, dir, max_t, vector_length_epsilon, parameter_bound_epsilon);
+        },
+        SurfaceType::Developable,
+        std::bind(&FlatPatchImpl::du2_du, impl, _1),
+        std::bind(&FlatPatchImpl::du2_dv, impl, _1),
+        std::bind(&FlatPatchImpl::duv_du, impl, _1),
+        std::bind(&FlatPatchImpl::duv_dv, impl, _1),
+        std::bind(&FlatPatchImpl::dv2_du, impl, _1),
+        std::bind(&FlatPatchImpl::dv2_dv, impl, _1)
     );
-    patch->setup_path_solver(vector_length_epsilon, parameter_bound_epsilon);
-    return patch;
 }
 
 } // namespace surfaces

@@ -46,6 +46,11 @@ public:
     using VectorType = Coord<N, VectorTag, SpaceTag>;  // Corresponding vector type
 
     /**
+     * Default constructor - initializes all components to zero.
+     */
+    Coord() noexcept : coords_{} {}  // Zero-initialize array
+
+    /**
      * Construct from individual components.
      */
     template<typename... Args>

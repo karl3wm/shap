@@ -125,7 +125,7 @@ void test_degenerate_cases() {
         );
         
         const WorldPoint3 test_point(0.5, 0, 0);
-        face->world_to_param(test_point);  // Should throw
+        [[maybe_unused]] const auto result = face->world_to_param(test_point);  // Should throw
         assert(false);  // Should not reach here
     }
     catch (const std::invalid_argument& e) {

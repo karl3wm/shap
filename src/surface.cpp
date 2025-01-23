@@ -21,51 +21,50 @@ namespace {
     }
 } // anonymous namespace
 
-class FunctionSurface final : public Surface {
-public:
-    FunctionSurface(
-        PositionFunction pos,
-        DerivativeFunction du,
-        DerivativeFunction dv,
-        DerivativeFunction duu,
-        DerivativeFunction duv,
-        DerivativeFunction dvv,
-        CurvatureFunction gaussian,
-        CurvatureFunction mean,
-        std::optional<PathSolver> path_solver = std::nullopt,
-        SurfaceType type = SurfaceType::Smooth,
-        ParameterSpaceDerivative du2_du = nullptr,
-        ParameterSpaceDerivative du2_dv = nullptr,
-        ParameterSpaceDerivative duv_du = nullptr,
-        ParameterSpaceDerivative duv_dv = nullptr,
-        ParameterSpaceDerivative dv2_du = nullptr,
-        ParameterSpaceDerivative dv2_dv = nullptr
-    ) : position_func_(std::move(pos))
-      , du_func_(std::move(du))
-      , dv_func_(std::move(dv))
-      , duu_func_(std::move(duu))
-      , duv_func_(std::move(duv))
-      , dvv_func_(std::move(dvv))
-      , gaussian_curv_func_(std::move(gaussian))
-      , mean_curv_func_(std::move(mean))
-      , path_solver_(std::move(path_solver))
-      , type_(type) {
-        if (!position_func_ || !du_func_ || !dv_func_ || 
-            !duu_func_ || !duv_func_ || !dvv_func_ ||
-            !gaussian_curv_func_ || !mean_curv_func_) {
-            throw std::invalid_argument("Required functions cannot be null");
-        }
-        
-        // Initialize metric component derivative functions
-        du2_du_fn_ = std::move(du2_du);
-        du2_dv_fn_ = std::move(du2_dv);
-        duv_du_fn_ = std::move(duv_du);
-        duv_dv_fn_ = std::move(duv_dv);
-        dv2_du_fn_ = std::move(dv2_du);
-        dv2_dv_fn_ = std::move(dv2_dv);
+Surface::Surface(
+    PositionFunction position_func,
+    DerivativeFunction du_func,
+    DerivativeFunction dv_func,
+    DerivativeFunction duu_func,
+    DerivativeFunction duv_func,
+    DerivativeFunction dvv_func,
+    CurvatureFunction gaussian_func,
+    CurvatureFunction mean_func,
+    WorldToParamFunction world_to_param_func,
+    std::optional<PathSolver> path_solver,
+    SurfaceType type,
+    ParameterSpaceDerivative du2_du,
+    ParameterSpaceDerivative du2_dv,
+    ParameterSpaceDerivative duv_du,
+    ParameterSpaceDerivative duv_dv,
+    ParameterSpaceDerivative dv2_du,
+    ParameterSpaceDerivative dv2_dv
+) : position_func_(std::move(position_func))
+  , du_func_(std::move(du_func))
+  , dv_func_(std::move(dv_func))
+  , duu_func_(std::move(duu_func))
+  , duv_func_(std::move(duv_func))
+  , dvv_func_(std::move(dvv_func))
+  , gaussian_curv_func_(std::move(gaussian_func))
+  , mean_curv_func_(std::move(mean_func))
+  , world_to_param_func_(std::move(world_to_param_func))
+  , path_solver_(std::move(path_solver))
+  , type_(type)
+  , du2_du_fn_(std::move(du2_du))
+  , du2_dv_fn_(std::move(du2_dv))
+  , duv_du_fn_(std::move(duv_du))
+  , duv_dv_fn_(std::move(duv_dv))
+  , dv2_du_fn_(std::move(dv2_du))
+  , dv2_dv_fn_(std::move(dv2_dv)) {
+    if (!position_func_ || !du_func_ || !dv_func_ || 
+        !duu_func_ || !duv_func_ || !dvv_func_ ||
+        !gaussian_curv_func_ || !mean_curv_func_ ||
+        !world_to_param_func_) {
+        throw std::invalid_argument("Required functions cannot be null");
     }
+}
 
-    [[nodiscard]] GeometryPoint2 evaluate(const ParamPoint2& local) const override {
+[[nodiscard]] GeometryPoint2 Surface::evaluate(const ParamPoint2& local) const {
         const WorldPoint3 position = position_func_(local);
         const WorldVector3 du = du_func_(local);
         const WorldVector3 dv = dv_func_(local);
@@ -120,31 +119,6 @@ public:
             dv
         );
     }
-
-    [[nodiscard]] ParamPoint3 world_to_param(const WorldPoint3& /*pos*/) const override {
-        throw std::runtime_error("world_to_param must be implemented by derived classes");
-    }
-
-    [[nodiscard]] std::optional<PathSolver> get_path_solver() const noexcept override {
-        return path_solver_;
-    }
-
-    [[nodiscard]] SurfaceType surface_type() const noexcept override {
-        return type_;
-    }
-
-private:
-    PositionFunction position_func_;
-    DerivativeFunction du_func_;
-    DerivativeFunction dv_func_;
-    DerivativeFunction duu_func_;
-    DerivativeFunction duv_func_;
-    DerivativeFunction dvv_func_;
-    CurvatureFunction gaussian_curv_func_;
-    CurvatureFunction mean_curv_func_;
-    std::optional<PathSolver> path_solver_;  // Optional since not all surfaces need path solving
-    SurfaceType type_;
-};
 
 std::unique_ptr<SurfacePath> Surface::create_path(
     const GeometryPoint2& start,
@@ -278,44 +252,6 @@ std::unique_ptr<SurfacePath> Surface::create_path(
     }
     
     return path;
-}
-
-std::shared_ptr<Surface> Surface::create(
-    PositionFunction position_func,
-    DerivativeFunction du_func,
-    DerivativeFunction dv_func,
-    DerivativeFunction duu_func,
-    DerivativeFunction duv_func,
-    DerivativeFunction dvv_func,
-    CurvatureFunction gaussian_func,
-    CurvatureFunction mean_func,
-    std::optional<PathSolver> path_solver,
-    SurfaceType type,
-    ParameterSpaceDerivative du2_du,
-    ParameterSpaceDerivative du2_dv,
-    ParameterSpaceDerivative duv_du,
-    ParameterSpaceDerivative duv_dv,
-    ParameterSpaceDerivative dv2_du,
-    ParameterSpaceDerivative dv2_dv
-) {
-    return std::make_shared<FunctionSurface>(
-        std::move(position_func),
-        std::move(du_func),
-        std::move(dv_func),
-        std::move(duu_func),
-        std::move(duv_func),
-        std::move(dvv_func),
-        std::move(gaussian_func),
-        std::move(mean_func),
-        std::move(path_solver),
-        type,
-        std::move(du2_du),
-        std::move(du2_dv),
-        std::move(duv_du),
-        std::move(duv_dv),
-        std::move(dv2_du),
-        std::move(dv2_dv)
-    );
 }
 
 WorldVector3 Surface::world_to_parameter_velocity(

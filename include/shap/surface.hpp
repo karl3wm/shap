@@ -61,10 +61,32 @@ using PathSolver = std::function<std::optional<PathIntersection>(
 // Forward declarations
 class RiemannianMetric;
 
+// Function type for converting world space to parameter space
+using WorldToParamFunction = std::function<ParamPoint3(const WorldPoint3&)>;
+
 class Surface {
     friend class RiemannianMetric;
 public:
-    virtual ~Surface() = default;
+    // Constructor with all required function objects
+    Surface(
+        PositionFunction position_func,
+        DerivativeFunction du_func,
+        DerivativeFunction dv_func,
+        DerivativeFunction duu_func,
+        DerivativeFunction duv_func,
+        DerivativeFunction dvv_func,
+        CurvatureFunction gaussian_func,
+        CurvatureFunction mean_func,
+        WorldToParamFunction world_to_param_func,
+        std::optional<PathSolver> path_solver = std::nullopt,
+        SurfaceType type = SurfaceType::Smooth,
+        ParameterSpaceDerivative du2_du = nullptr,
+        ParameterSpaceDerivative du2_dv = nullptr,
+        ParameterSpaceDerivative duv_du = nullptr,
+        ParameterSpaceDerivative duv_dv = nullptr,
+        ParameterSpaceDerivative dv2_du = nullptr,
+        ParameterSpaceDerivative dv2_dv = nullptr
+    );
     
     // Prevent copying
     Surface(const Surface&) = delete;
@@ -74,8 +96,19 @@ public:
     Surface(Surface&&) noexcept = default;
     Surface& operator=(Surface&&) noexcept = default;
 
-protected:
-    Surface() = default;
+private:
+    // Surface functions
+    PositionFunction position_func_;
+    DerivativeFunction du_func_;
+    DerivativeFunction dv_func_;
+    DerivativeFunction duu_func_;
+    DerivativeFunction duv_func_;
+    DerivativeFunction dvv_func_;
+    CurvatureFunction gaussian_curv_func_;
+    CurvatureFunction mean_curv_func_;
+    WorldToParamFunction world_to_param_func_;
+    std::optional<PathSolver> path_solver_;
+    SurfaceType type_;
 
     // Parameter space derivative functions
     ParameterSpaceDerivative du2_du_fn_;  // d(du·du)/du
@@ -93,7 +126,7 @@ public:
      * @return GeometryPoint2 containing full geometric information
      * @throws std::invalid_argument if coordinates are invalid
      */
-    [[nodiscard]] virtual GeometryPoint2 evaluate(const ParamPoint2& local) const = 0;
+    [[nodiscard]] GeometryPoint2 evaluate(const ParamPoint2& local) const;
     
     /**
      * Convert a world space position to local coordinates.
@@ -111,7 +144,9 @@ public:
      * @return ParamPoint3 containing local coordinates
      * @throws std::invalid_argument if coordinate computation fails
      */
-    [[nodiscard]] virtual ParamPoint3 world_to_param(const WorldPoint3& pos) const = 0;
+    [[nodiscard]] ParamPoint3 world_to_param(const WorldPoint3& pos) const {
+        return world_to_param_func_(pos);
+    }
     
     /**
      * Convert a world space position to surface parameter coordinates.
@@ -121,7 +156,7 @@ public:
      * @return ParamPoint2 containing parameter coordinates
      * @throws std::invalid_argument if coordinate computation fails
      */
-    [[nodiscard]] virtual ParamPoint2 world_to_param_r2(const WorldPoint3& pos) const {
+    [[nodiscard]] ParamPoint2 world_to_param_r2(const WorldPoint3& pos) const {
         return world_to_param(pos).to_r2();
     }
     
@@ -134,20 +169,20 @@ public:
      * @throws std::invalid_argument if preconditions are not met
      * @return Unique pointer to path object representing the curve
      */
-    [[nodiscard]] virtual std::unique_ptr<SurfacePath> create_path(
+    [[nodiscard]] std::unique_ptr<SurfacePath> create_path(
         const GeometryPoint2& start,
         const WorldVector3& world_direction,
         double world_length
     ) const;
     
     // Get path solver if available
-    [[nodiscard]] virtual std::optional<PathSolver> get_path_solver() const noexcept {
-        return std::nullopt;
+    [[nodiscard]] std::optional<PathSolver> get_path_solver() const noexcept {
+        return path_solver_;
     }
     
     // Get surface type
-    [[nodiscard]] virtual SurfaceType surface_type() const noexcept {
-        return SurfaceType::Generic;
+    [[nodiscard]] SurfaceType surface_type() const noexcept {
+        return type_;
     }
     
     
@@ -207,25 +242,6 @@ public:
         return dv2_dv_fn_ ? dv2_dv_fn_(param) : 0.0;
     }
 
-    // Factory methods
-    [[nodiscard]] static std::shared_ptr<Surface> create(
-        PositionFunction position_func,
-        DerivativeFunction du_func,
-        DerivativeFunction dv_func,
-        DerivativeFunction duu_func,
-        DerivativeFunction duv_func,
-        DerivativeFunction dvv_func,
-        CurvatureFunction gaussian_func,
-        CurvatureFunction mean_func,
-        std::optional<PathSolver> path_solver = std::nullopt,
-        SurfaceType type = SurfaceType::Smooth,
-        ParameterSpaceDerivative du2_du = nullptr,
-        ParameterSpaceDerivative du2_dv = nullptr,
-        ParameterSpaceDerivative duv_du = nullptr,
-        ParameterSpaceDerivative duv_dv = nullptr,
-        ParameterSpaceDerivative dv2_du = nullptr,
-        ParameterSpaceDerivative dv2_dv = nullptr
-    );
 };
 
 } // namespace shap

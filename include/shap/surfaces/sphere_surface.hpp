@@ -1,15 +1,29 @@
-#include "coord.hpp"
 #pragma once
-#include "../geometry_point2.hpp"
-#include "../surface.hpp"
+#include "shap/coord.hpp"
+#include "shap/geometry_point2.hpp"
+#include "shap/surface.hpp"
 #include <cmath>
 #include <numbers>
+#include <functional>
 
 namespace shap {
 namespace surfaces {
 
+namespace {
+
+static constexpr double PI = std::numbers::pi;
+static constexpr double TWO_PI = 2 * PI;
+static constexpr double HALF_PI = PI / 2;
+
+// Helper to compute both sin and cos
+[[nodiscard]] static std::pair<double, double> sincos(double x) noexcept {
+    return {std::sin(x), std::cos(x)};
+}
+
+} // anonymous namespace
+
 /**
- * A sphere surface centered at the origin with given radius.
+ * Create a sphere surface centered at the origin with given radius.
  *
  * The sphere is parameterized using spherical coordinates:
  * u ∈ [0,1] maps to longitude [0,2π]
@@ -20,187 +34,166 @@ namespace surfaces {
  * - Constant mean curvature H = 1/r
  * - Geodesics are great circles
  * - Singularities at poles (v=0 and v=1)
+ *
+ * @param radius Sphere radius (must be positive)
+ * @param tangent_epsilon Tolerance for tangent vector length (default: 1e-10)
+ * @param surface_distance_epsilon Tolerance for point-to-surface distance (default: 1e-6)
+ * @return Shared pointer to sphere surface
+ * @throws std::invalid_argument if radius <= 0 or if any epsilon <= 0
  */
-class SphereSurface final : public Surface {
-public:
-    /**
-     * Create a sphere with given radius and tolerances.
-     *
-     * @param r Sphere radius (must be positive)
-     * @param tangent_epsilon Tolerance for tangent vector length (default: 1e-10)
-     * @param surface_distance_epsilon Tolerance for point-to-surface distance (default: 1e-6)
-     * @throws std::invalid_argument if r <= 0 or if any epsilon <= 0
-     */
-    explicit SphereSurface(
-        double r,
-        double tangent_epsilon = 1e-10,
-        double surface_distance_epsilon = 1e-6
-    ) : Surface() {
-        if (r <= 0) {
-            throw std::invalid_argument("Sphere radius must be positive");
+[[nodiscard]] std::shared_ptr<Surface> create_sphere(
+    double radius = 1.0,
+    double tangent_epsilon = 1e-10,
+    double surface_distance_epsilon = 1e-6
+) {
+    if (radius <= 0) {
+        throw std::invalid_argument("Sphere radius must be positive");
+    }
+    if (tangent_epsilon <= 0 || surface_distance_epsilon <= 0) {
+        throw std::invalid_argument("Epsilon values must be positive");
+    }
+
+    // Create derived class instance to bind member functions from
+    class SphereSurfaceImpl {
+    public:
+        explicit SphereSurfaceImpl(double r) : radius(r) {}
+
+        WorldPoint3 position(const ParamPoint2& local) const {
+            const double u = local.u();
+            const double v = local.v();
+
+            // Map parameters to angles
+            const double phi = u * TWO_PI;    // longitude [0,2π]
+            const double theta = v * PI;       // colatitude [0,π]
+
+            // Cache trigonometric values
+            const auto [sin_phi, cos_phi] = sincos(phi);
+            const auto [sin_theta, cos_theta] = sincos(theta);
+            
+            // Position (r * sin(θ)cos(φ), r * sin(θ)sin(φ), r * cos(θ))
+            const double r_sin_theta = radius * sin_theta;
+            return WorldPoint3(
+                r_sin_theta * cos_phi,
+                r_sin_theta * sin_phi,
+                radius * cos_theta
+            );
         }
-        if (tangent_epsilon <= 0 || surface_distance_epsilon <= 0) {
-            throw std::invalid_argument("Epsilon values must be positive");
+
+        WorldVector3 du(const ParamPoint2& local) const {
+            const double phi = local.u() * TWO_PI;
+            const double theta = local.v() * PI;
+            const auto [sin_phi, cos_phi] = sincos(phi);
+            const double r_sin_theta = radius * std::sin(theta);
+            return WorldVector3(
+                -r_sin_theta * sin_phi,
+                r_sin_theta * cos_phi,
+                0
+            );
         }
-        radius_ = r;
-        tangent_epsilon_ = tangent_epsilon;
-        surface_distance_epsilon_ = surface_distance_epsilon;
-        setup_path_solver();
-        setup_metric_derivatives();
-    }
 
-    // Move operations
-    SphereSurface(SphereSurface&&) noexcept = default;
-    SphereSurface& operator=(SphereSurface&&) noexcept = default;
+        WorldVector3 dv(const ParamPoint2& local) const {
+            const double phi = local.u() * TWO_PI;
+            const double theta = local.v() * PI;
+            const auto [sin_phi, cos_phi] = sincos(phi);
+            const auto [sin_theta, cos_theta] = sincos(theta);
+            const double r_cos_theta = radius * cos_theta;
+            return WorldVector3(
+                r_cos_theta * cos_phi,
+                r_cos_theta * sin_phi,
+                -radius * sin_theta
+            );
+        }
 
-    // Prevent copying
-    SphereSurface(const SphereSurface&) = delete;
-    SphereSurface& operator=(const SphereSurface&) = delete;
+        WorldVector3 duu(const ParamPoint2& local) const {
+            const double phi = local.u() * TWO_PI;
+            const double theta = local.v() * PI;
+            const auto [sin_phi, cos_phi] = sincos(phi);
+            const double r_sin_theta = radius * std::sin(theta);
+            return WorldVector3(
+                -r_sin_theta * cos_phi,
+                -r_sin_theta * sin_phi,
+                0
+            );
+        }
 
-    [[nodiscard]] GeometryPoint2 evaluate(const ParamPoint2& local) const override {
-        const double u = local.u();
-        const double v = local.v();
+        WorldVector3 duv(const ParamPoint2& local) const {
+            const double phi = local.u() * TWO_PI;
+            const double theta = local.v() * PI;
+            const auto [sin_phi, cos_phi] = sincos(phi);
+            const double r_cos_theta = radius * std::cos(theta);
+            return WorldVector3(
+                -r_cos_theta * sin_phi,
+                r_cos_theta * cos_phi,
+                0
+            );
+        }
 
-        // Map parameters to angles
-        const double phi = u * TWO_PI;    // longitude [0,2π]
-        const double theta = v * PI;       // colatitude [0,π]
+        WorldVector3 dvv(const ParamPoint2& local) const {
+            const double phi = local.u() * TWO_PI;
+            const double theta = local.v() * PI;
+            const auto [sin_phi, cos_phi] = sincos(phi);
+            const auto [sin_theta, cos_theta] = sincos(theta);
+            const double r_sin_theta = radius * sin_theta;
+            return WorldVector3(
+                -r_sin_theta * cos_phi,
+                -r_sin_theta * sin_phi,
+                -radius * cos_theta
+            );
+        }
 
-        // Cache trigonometric values
-        const auto [sin_phi, cos_phi] = sincos(phi);
-        const auto [sin_theta, cos_theta] = sincos(theta);
-        
-        // Position (r * sin(θ)cos(φ), r * sin(θ)sin(φ), r * cos(θ))
-        const double r_sin_theta = radius_ * sin_theta;
-        const WorldPoint3 world_pos(
-            r_sin_theta * cos_phi,
-            r_sin_theta * sin_phi,
-            radius_ * cos_theta
-        );
-        
-        // Normal points outward from origin (unit vector in radial direction)
-        const WorldVector3 world_normal(
-            sin_theta * cos_phi,
-            sin_theta * sin_phi,
-            cos_theta
-        );
-        
-        // First derivatives
-        // ∂/∂φ = r * sin(θ) * (-sin(φ), cos(φ), 0)
-        const WorldVector3 world_du(
-            -r_sin_theta * sin_phi,
-            r_sin_theta * cos_phi,
-            0
-        );
-        
-        // ∂/∂θ = r * (cos(θ)cos(φ), cos(θ)sin(φ), -sin(θ))
-        const double r_cos_theta = radius_ * cos_theta;
-        const WorldVector3 world_dv(
-            r_cos_theta * cos_phi,
-            r_cos_theta * sin_phi,
-            -r_sin_theta
-        );
-        
-        // Second derivatives
-        // ∂²/∂φ² = -r * sin(θ) * (cos(φ), sin(φ), 0)
-        const WorldVector3 world_duu(
-            -r_sin_theta * cos_phi,
-            -r_sin_theta * sin_phi,
-            0
-        );
-        
-        // ∂²/∂φ∂θ = r * cos(θ) * (-sin(φ), cos(φ), 0)
-        const WorldVector3 world_duv(
-            -r_cos_theta * sin_phi,
-            r_cos_theta * cos_phi,
-            0
-        );
-        
-        // ∂²/∂θ² = -r * (sin(θ)cos(φ), sin(θ)sin(φ), cos(θ))
-        const WorldVector3 world_dvv(
-            -r_sin_theta * cos_phi,
-            -r_sin_theta * sin_phi,
-            -r_cos_theta
-        );
-        
-        // Constant curvature values
-        const double inv_r = 1.0 / radius_;
-        const double inv_r2 = inv_r * inv_r;
-        
-        return GeometryPoint2(
-            local,
-            world_pos,
-            world_normal,
-            world_du,
-            world_dv,
-            world_duu,
-            world_duv,
-            world_dvv,
-            inv_r2,                        // Gaussian curvature
-            inv_r,                         // Mean curvature
-            std::make_pair(inv_r, inv_r)   // Principal curvatures
-        );
-    }
+        double gaussian(const ParamPoint2&) const {
+            return 1.0 / (radius * radius);
+        }
 
-    [[nodiscard]] ParamPoint3 world_to_param(const WorldPoint3& pos) const override {
-        // Get distance from origin
-        const double r = pos.length();
-        
-        // Get signed distance from sphere surface
-        const double normal_dist = r - radius_;
-        
-        // Normalize position to unit sphere for parameter computation
-        const double inv_r = 1.0 / r;
-        const double x = pos.x() * inv_r;
-        const double y = pos.y() * inv_r;
-        const double z = pos.z() * inv_r;
-        
-        // Convert to spherical coordinates
-        double v = std::acos(std::clamp(z, -1.0, 1.0));  // colatitude [0,π]
-        double u = std::atan2(y, x);                      // longitude [-π,π]
-        
-        // Normalize u to [0,2π]
-        if (u < 0) u += TWO_PI;
-        
-        // Convert to parameter space [0,1]×[0,1]
-        return ParamPoint3(u / TWO_PI, v / PI, normal_dist);
-    }
+        double mean(const ParamPoint2&) const {
+            return 1.0 / radius;
+        }
 
-    [[nodiscard]] std::optional<PathSolver> get_path_solver() const noexcept override {
-        return path_solver_;
-    }
+        ParamPoint3 world_to_param(const WorldPoint3& pos) const {
+            // Get distance from origin
+            const double r = pos.length();
+            if (r < ValidationConfig::instance().vector_length_epsilon()) {
+                throw std::invalid_argument("Cannot compute parameters for zero position vector");
+            }
+            
+            // Get signed distance from sphere surface
+            const double normal_dist = r - radius;
+            
+            // Normalize position to unit sphere for parameter computation
+            const double inv_r = 1.0 / r;
+            const double x = pos.x() * inv_r;
+            const double y = pos.y() * inv_r;
+            const double z = pos.z() * inv_r;
+            
+            // Convert to spherical coordinates
+            double v = std::acos(std::clamp(z, -1.0, 1.0));  // colatitude [0,π]
+            double u = std::atan2(y, x);                      // longitude [-π,π]
+            
+            // Normalize u to [0,2π]
+            if (u < 0) u += TWO_PI;
+            
+            // Convert to parameter space [0,1]×[0,1]
+            return ParamPoint3(u / TWO_PI, v / PI, normal_dist);
+        }
 
-    [[nodiscard]] SurfaceType surface_type() const noexcept override {
-        return SurfaceType::Smooth;
-    }
-
-    // Access radius
-    [[nodiscard]] double radius() const noexcept { return radius_; }
-
-private:
-    static constexpr double PI = std::numbers::pi;
-    static constexpr double TWO_PI = 2 * PI;
-    static constexpr double HALF_PI = PI / 2;
-
-    // Helper to compute both sin and cos
-    [[nodiscard]] static std::pair<double, double> sincos(double x) noexcept {
-        return {std::sin(x), std::cos(x)};
-    }
-
-    void setup_path_solver() noexcept {
-        path_solver_ = [this](const WorldPoint3& start, const WorldVector3& dir, double max_t)
-            -> std::optional<PathIntersection> {
+        std::optional<PathIntersection> solve_path(
+            const WorldPoint3& start, const WorldVector3& dir, double max_t, double tangent_epsilon) const {
             // Project direction onto tangent plane at start point
-            const WorldVector3 surface_normal = start * (1.0 / start.length());
+            const double start_length = start.length();
+            if (start_length < tangent_epsilon) {
+                return std::nullopt;  // Start point too close to origin
+            }
+            const WorldVector3 surface_normal = start * (1.0 / start_length);
             WorldVector3 tangent = dir - dir.dot(surface_normal) * surface_normal;
             const double tangent_length = tangent.length();
-            if (tangent_length < tangent_epsilon_) {
+            if (tangent_length < tangent_epsilon) {
                 return std::nullopt;  // Direction perpendicular to surface
             }
             tangent = tangent * (1.0 / tangent_length);
             
             // Great circle radius = sphere radius
             // Distance = radius * angle
-            const double angle = max_t / radius_;
+            const double angle = max_t / radius;
             
             // No intersection if we don't complete half circle
             if (angle <= PI) {
@@ -208,70 +201,63 @@ private:
             }
             
             // Convert start point to spherical coordinates
-            const double v = std::acos(std::clamp(start.z() / radius_, -1.0, 1.0));
+            const double v = std::acos(std::clamp(start.z() / radius, -1.0, 1.0));
             double u = std::atan2(start.y(), start.x());
             if (u < 0) u += TWO_PI;
             
             // Find intersection parameters
             const ParamBound bound = (v < HALF_PI) ? ParamBound::Upper : ParamBound::Lower;
-            const double pole_z = (v < HALF_PI) ? radius_ : -radius_;
+            const double pole_z = (v < HALF_PI) ? radius : -radius;
             
             return PathIntersection(
-                HALF_PI * radius_,           // Time to reach pole
+                HALF_PI * radius,           // Time to reach pole
                 WorldPoint3(0, 0, pole_z),   // Pole position
                 ParamIndex::V,               // Vertical parameter
                 bound,                       // Upper/lower bound
                 u / TWO_PI                   // Normalized longitude
             );
-        };
-    }
+        }
 
-    double radius_;
-    double tangent_epsilon_;
-    double surface_distance_epsilon_;
-    PathSolver path_solver_;
-
-    void setup_metric_derivatives() noexcept {
-        // For a sphere with radius r:
-        // g11 = r²sin²(θ)
-        // g12 = 0
-        // g22 = r²
-        
-        // Therefore:
-        // ∂g11/∂u = 0 (independent of longitude)
-        dg11_du_fn_ = [](const ParamPoint2&) { return 0.0; };
-        
-        // ∂g11/∂v = 2r²sin(θ)cos(θ) = r²sin(2θ)
-        dg11_dv_fn_ = [this](const ParamPoint2& p) {
+        double du2_du(const ParamPoint2&) const { return 0.0; }
+        double du2_dv(const ParamPoint2& p) const {
             const double theta = p.v() * PI;
-            return radius_ * radius_ * std::sin(2 * theta);
-        };
-        
-        // g12 is constant 0, so derivatives are 0
-        dg12_du_fn_ = [](const ParamPoint2&) { return 0.0; };
-        dg12_dv_fn_ = [](const ParamPoint2&) { return 0.0; };
-        
-        // g22 is constant r², so derivatives are 0
-        dg22_du_fn_ = [](const ParamPoint2&) { return 0.0; };
-        dg22_dv_fn_ = [](const ParamPoint2&) { return 0.0; };
-    }
-};
+            return radius * radius * std::sin(2 * theta);
+        }
+        double duv_du(const ParamPoint2&) const { return 0.0; }
+        double duv_dv(const ParamPoint2&) const { return 0.0; }
+        double dv2_du(const ParamPoint2&) const { return 0.0; }
+        double dv2_dv(const ParamPoint2&) const { return 0.0; }
 
-/**
- * Create a sphere surface with the given radius.
- * 
- * @param radius Sphere radius (must be positive)
- * @param tangent_epsilon Tolerance for tangent vector length (default: 1e-10)
- * @param surface_distance_epsilon Tolerance for point-to-surface distance (default: 1e-6)
- * @return Shared pointer to sphere surface
- * @throws std::invalid_argument if radius <= 0 or if any epsilon <= 0
- */
-[[nodiscard]] inline std::shared_ptr<Surface> create_sphere(
-    double radius = 1.0,
-    double tangent_epsilon = 1e-10,
-    double surface_distance_epsilon = 1e-6
-) {
-    return std::make_shared<SphereSurface>(radius, tangent_epsilon, surface_distance_epsilon);
+    private:
+        double radius;
+    };
+
+    // Create implementation object
+    auto impl = std::make_shared<SphereSurfaceImpl>(radius);
+
+    // Create surface using std::bind to member functions
+    using namespace std::placeholders;
+    return std::make_shared<Surface>(
+        std::bind(&SphereSurfaceImpl::position, impl, _1),
+        std::bind(&SphereSurfaceImpl::du, impl, _1),
+        std::bind(&SphereSurfaceImpl::dv, impl, _1),
+        std::bind(&SphereSurfaceImpl::duu, impl, _1),
+        std::bind(&SphereSurfaceImpl::duv, impl, _1),
+        std::bind(&SphereSurfaceImpl::dvv, impl, _1),
+        std::bind(&SphereSurfaceImpl::gaussian, impl, _1),
+        std::bind(&SphereSurfaceImpl::mean, impl, _1),
+        std::bind(&SphereSurfaceImpl::world_to_param, impl, _1),
+        [impl, tangent_epsilon](const WorldPoint3& start, const WorldVector3& dir, double max_t) {
+            return impl->solve_path(start, dir, max_t, tangent_epsilon);
+        },
+        SurfaceType::Smooth,
+        std::bind(&SphereSurfaceImpl::du2_du, impl, _1),
+        std::bind(&SphereSurfaceImpl::du2_dv, impl, _1),
+        std::bind(&SphereSurfaceImpl::duv_du, impl, _1),
+        std::bind(&SphereSurfaceImpl::duv_dv, impl, _1),
+        std::bind(&SphereSurfaceImpl::dv2_du, impl, _1),
+        std::bind(&SphereSurfaceImpl::dv2_dv, impl, _1)
+    );
 }
 
 } // namespace surfaces
