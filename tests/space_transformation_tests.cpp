@@ -40,7 +40,7 @@ void test_orthogonal_basis_transformations() {
     };
 
     for (const auto& [world, expected_u, expected_v] : world_points) {
-        const auto params = face->world_to_param(world).to_r2();
+        const auto params = face->world_to_param(world).uv();
         assert(approx_equal(params.u(), expected_u) && 
                approx_equal(params.v(), expected_v));
     }
@@ -152,7 +152,7 @@ void test_path_creation() {
     const double length = 1.0;
     const WorldPoint3 expected_end(0.5, 1, 0);
 
-    const auto params = face->world_to_param(start).to_r2();
+    const auto params = face->world_to_param(start).uv();
     const auto start_point = face->evaluate(params);
     auto path = face->create_path(start_point, dir, length);
 

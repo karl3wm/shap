@@ -149,18 +149,6 @@ public:
     }
     
     /**
-     * Convert a world space position to surface parameter coordinates.
-     * Projects the point onto the surface along the normal direction.
-     *
-     * @param pos World space position to convert
-     * @return ParamPoint2 containing parameter coordinates
-     * @throws std::invalid_argument if coordinate computation fails
-     */
-    [[nodiscard]] ParamPoint2 world_to_param_r2(const WorldPoint3& pos) const {
-        return world_to_param(pos).to_r2();
-    }
-    
-    /**
      * Create a path on the surface starting from a point in a given direction.
      * 
      * @param start Starting point on the surface

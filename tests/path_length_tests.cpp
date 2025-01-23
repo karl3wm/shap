@@ -26,7 +26,7 @@ void test_path_length_invariants_passing() {
     const double expected_param_delta = 0.25;  // L/(2|du|) = 1.0/(2*2)
 
     const auto params = face->world_to_param(start);
-    const auto start_point = face->evaluate(params.to_r2());
+    const auto start_point = face->evaluate(params.uv());
     auto path = face->create_path(start_point, dir, length);
 
     const auto end_pt = path->evaluate(1.0);
@@ -52,7 +52,7 @@ void test_path_length_invariants_failing() {
     const double length = 1.0;
 
     const auto params = face->world_to_param(start);
-    const auto start_point = face->evaluate(params.to_r2());
+    const auto start_point = face->evaluate(params.uv());
     auto path = face->create_path(start_point, dir, length);
 
     // Check key points for distance preservation

@@ -28,7 +28,7 @@ public:
     ) : surface_(surface)
       , local_pos_(std::move(local))
       , world_pos_(std::move(world_pos))
-      , world_normal_(std::move(world_normal).normalize())
+      , world_normal_(std::move(world_normal).normalized())
       , world_du_(std::move(world_du))
       , world_dv_(std::move(world_dv)) {}
 
@@ -51,7 +51,7 @@ public:
     ) : surface_(surface)
       , local_pos_(std::move(local))
       , world_pos_(std::move(world_pos))
-      , world_normal_(std::move(world_normal).normalize())
+      , world_normal_(std::move(world_normal).normalized())
       , world_du_(std::move(world_du))
       , world_dv_(std::move(world_dv))
       , world_duu_(std::make_optional(std::move(world_duu)))

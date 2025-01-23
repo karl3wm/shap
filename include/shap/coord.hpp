@@ -73,8 +73,13 @@ public:
     [[nodiscard]] double v() const noexcept requires std::is_same_v<SpaceTag, ParamSpaceTag> { return coords_[1]; }
     [[nodiscard]] double w() const noexcept requires (std::is_same_v<SpaceTag, ParamSpaceTag> && N == 3) { return coords_[2]; }
 
-    // Conversion from 3D to 2D (only for parameter space points)
-    [[nodiscard]] Coord<2, CoordTag, SpaceTag> to_r2() const noexcept 
+    // Conversion from 3D to 2D
+    [[nodiscard]] Coord<2, CoordTag, SpaceTag> xy() const noexcept 
+        requires (N == 3 && std::is_same_v<SpaceTag, WorldSpaceTag>) {
+        return Coord<2, CoordTag, SpaceTag>(coords_[0], coords_[1]);
+    }
+
+    [[nodiscard]] Coord<2, CoordTag, SpaceTag> uv() const noexcept 
         requires (N == 3 && std::is_same_v<SpaceTag, ParamSpaceTag>) {
         return Coord<2, CoordTag, SpaceTag>(coords_[0], coords_[1]);
     }
@@ -120,7 +125,7 @@ public:
     }
 
     template<typename T = CoordTag>
-    [[nodiscard]] ThisType normalize() const requires std::is_same_v<T, VectorTag> {
+    [[nodiscard]] ThisType normalized() const requires std::is_same_v<T, VectorTag> {
         const double len = length();
         if (len < ValidationConfig::instance().vector_length_epsilon()) {
             throw std::invalid_argument("Cannot normalize zero-length vector");
@@ -144,7 +149,7 @@ public:
 
     // Cross product (available for 3D vectors only)
     template<typename T = CoordTag>
-    [[nodiscard]] ThisType cross(const ThisType& other) const noexcept 
+    [[nodiscard]] ThisType crossed(const ThisType& other) const noexcept 
         requires (std::is_same_v<T, VectorTag> && N == 3) {
         return ThisType(
             coords_[1] * other.coords_[2] - coords_[2] * other.coords_[1],

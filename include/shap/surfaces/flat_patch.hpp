@@ -45,7 +45,7 @@ void validate_vectors(const WorldVector3& world_u, const WorldVector3& world_v) 
     if (world_v.length_squared() < config.vector_length_epsilon()) {
         throw std::invalid_argument("world_v vector cannot be zero");
     }
-    if (std::abs(world_u.normalize().dot(world_v.normalize())) > 1.0 - config.vector_parallel_epsilon()) {
+    if (std::abs(world_u.normalized().dot(world_v.normalized())) > 1.0 - config.vector_parallel_epsilon()) {
         throw std::invalid_argument("world_u and world_v vectors cannot be parallel");
     }
 }
@@ -77,7 +77,7 @@ void validate_vectors(const WorldVector3& world_u, const WorldVector3& world_v) 
             , world_v(std::move(world_v_))
         {
             validate_vectors(world_u, world_v);
-            normal = world_u.cross(world_v).normalize();
+            normal = world_u.crossed(world_v).normalized();
         }
 
         WorldPoint3 position(const ParamPoint2& local) const {
@@ -103,7 +103,7 @@ void validate_vectors(const WorldVector3& world_u, const WorldVector3& world_v) 
             const WorldVector3 planar_pos = rel_pos - normal * normal_dist;
             
             // Use Cramer's rule for 2x2 system
-            const double det = world_u.cross(world_v).length();
+            const double det = world_u.crossed(world_v).length();
             if (det < ValidationConfig::instance().vector_length_epsilon()) {
                 throw std::invalid_argument(
                     "Cannot compute local coordinates: basis vectors are nearly parallel"
@@ -111,8 +111,8 @@ void validate_vectors(const WorldVector3& world_u, const WorldVector3& world_v) 
             }
             
             // Compute parameter coordinates
-            const double u = planar_pos.cross(world_v).dot(normal) / det;
-            const double v = world_u.cross(planar_pos).dot(normal) / det;
+            const double u = planar_pos.crossed(world_v).dot(normal) / det;
+            const double v = world_u.crossed(planar_pos).dot(normal) / det;
             
             return ParamPoint3(u, v, normal_dist);
         }

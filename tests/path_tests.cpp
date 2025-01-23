@@ -108,7 +108,7 @@ void test_cube_face_paths() {
     // Test diagonal path
     {
         const Point start(-0.5, 1, -0.5);
-        const Vector dir = Vector(1, 0, 1).normalize();
+        const Vector dir = Vector(1, 0, 1).normalized();
         const double length = std::sqrt(2);
         const Point expected_end(0.5, 1, 0.5);
 
@@ -151,7 +151,7 @@ void test_cube_face_transitions() {
     // Test front to right transition
     {
         const Point start(0.5, 1, 0);
-        const Vector dir = Vector(1, -0.5, 0).normalize();
+        const Vector dir = Vector(1, -0.5, 0).normalized();
         const double length = std::sqrt(1.25);
 
         const auto params = CubeFaceTest::world_to_params(start);

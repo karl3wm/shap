@@ -145,12 +145,12 @@ WorldVector3 GeodesicCurve::tangent(double t) const {
     // Use central difference for interior points
     if (idx > 0 && idx < points_.size() - 2) {
         const WorldVector3 diff = points_[idx+1].world_pos() - points_[idx-1].world_pos();
-        return diff.normalize();
+        return diff.normalized();
     }
     
     // Use forward/backward difference at endpoints
     const WorldVector3 diff = points_[idx+1].world_pos() - points_[idx].world_pos();
-    return diff.normalize();
+    return diff.normalized();
 }
 
 WorldVector3 GeodesicCurve::normal(double t) const {
@@ -179,7 +179,7 @@ WorldVector3 PathSegment::tangent(double t) const {
         const auto p1 = surface_->evaluate(p1_local);
         const auto p0 = surface_->evaluate(p0_local);
         const WorldVector3 diff = p1.world_pos() - p0.world_pos();
-        return diff.normalize();
+        return diff.normalized();
     }
     
     // Use forward/backward difference at endpoints
@@ -188,7 +188,7 @@ WorldVector3 PathSegment::tangent(double t) const {
     const auto p1 = surface_->evaluate(p1_local);
     const auto p0 = surface_->evaluate(p0_local);
     const WorldVector3 diff = p1.world_pos() - p0.world_pos();
-    return diff.normalize();
+    return diff.normalized();
 }
 
 WorldVector3 PathSegment::normal(double t) const {

@@ -67,7 +67,7 @@ std::unique_ptr<SurfacePath> SurfaceCollection::create_path(
             auto intersection = (*solver)(current.world_pos(), current_dir, world_length - t);
             if (intersection) {
                 // Convert end point to parameter space
-                const auto end_local = current_surface->world_to_param_r2(intersection->position);
+                const auto end_local = current_surface->world_to_param(intersection->position).uv();
                 const auto& start_local = current.local_pos();
                 
                 // Add segment up to intersection
@@ -97,7 +97,7 @@ std::unique_ptr<SurfacePath> SurfaceCollection::create_path(
                 if (current_dir.length_squared() < 1e-10) {
                     throw std::runtime_error("Direction became perpendicular to surface");
                 }
-                current_dir = current_dir.normalize();
+                current_dir = current_dir.normalized();
                 continue;
             }
         }

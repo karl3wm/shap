@@ -17,7 +17,7 @@ namespace {
         const WorldVector3& du, 
         const WorldVector3& dv
     ) noexcept {
-        return du.cross(dv).normalize();
+        return du.crossed(dv).normalized();
     }
 } // anonymous namespace
 
@@ -164,7 +164,7 @@ std::unique_ptr<SurfacePath> Surface::create_path(
               << tangent_dir.y() << ", " << tangent_dir.z()
               << " (length=" << tangent_dir.length() << ")\n";
     
-    tangent_dir = tangent_dir.normalize();
+    tangent_dir = tangent_dir.normalized();
     std::cout << "Normalized direction: " << tangent_dir.x() << ", "
               << tangent_dir.y() << ", " << tangent_dir.z() << "\n";
 
@@ -203,7 +203,7 @@ std::unique_ptr<SurfacePath> Surface::create_path(
     if (auto solver = get_path_solver()) {
         if (auto intersection = (*solver)(start.world_pos(), tangent_dir, 1.0)) {
             transition_t = intersection->t;
-            transition_local = world_to_param_r2(intersection->position);
+            transition_local = world_to_param(intersection->position).uv();
         }
     }
 
@@ -260,7 +260,7 @@ WorldVector3 Surface::world_to_parameter_velocity(
     const WorldVector3& world_dv
 ) const noexcept {
     // Solve linear system to convert world direction to parameter velocity
-    const WorldVector3 normal = world_du.cross(world_dv);
+    const WorldVector3 normal = world_du.crossed(world_dv);
     const double det = normal.length();
     if (det < ValidationConfig::instance().vector_length_epsilon()) {
         return WorldVector3(0, 0, 0);  // Degenerate case
@@ -269,8 +269,8 @@ WorldVector3 Surface::world_to_parameter_velocity(
     // Use Cramer's rule to solve the system:
     // world_direction = du_dt * world_du + dv_dt * world_dv
     const WorldVector3 normalized_normal = normal * (1.0 / det);
-    const double du_dt = world_direction.cross(world_dv).dot(normalized_normal);
-    const double dv_dt = world_du.cross(world_direction).dot(normalized_normal);
+    const double du_dt = world_direction.crossed(world_dv).dot(normalized_normal);
+    const double dv_dt = world_du.crossed(world_direction).dot(normalized_normal);
     
     return WorldVector3(du_dt, dv_dt, 0);
 }
