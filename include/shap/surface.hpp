@@ -21,7 +21,7 @@ class SurfacePath;
 using PositionFunction = std::function<WorldPoint3(const ParamPoint2&)>;
 using DerivativeFunction = std::function<WorldVector3(const ParamPoint2&)>;
 using CurvatureFunction = std::function<double(const ParamPoint2&)>;
-using MetricDerivativeFunction = std::function<double(const ParamPoint2&)>;
+using ParameterSpaceDerivative = std::function<double(const ParamPoint2&)>;
 
 // Path solver returns intersection with surface boundary
 struct PathIntersection {
@@ -77,13 +77,13 @@ public:
 protected:
     Surface() = default;
 
-    // Metric component derivative functions
-    MetricDerivativeFunction du2_du_fn_;  // d(du·du)/du
-    MetricDerivativeFunction du2_dv_fn_;  // d(du·du)/dv
-    MetricDerivativeFunction duv_du_fn_;  // d(du·dv)/du
-    MetricDerivativeFunction duv_dv_fn_;  // d(du·dv)/dv
-    MetricDerivativeFunction dv2_du_fn_;  // d(dv·dv)/du
-    MetricDerivativeFunction dv2_dv_fn_;  // d(dv·dv)/dv
+    // Parameter space derivative functions
+    ParameterSpaceDerivative du2_du_fn_;  // d(du·du)/du
+    ParameterSpaceDerivative du2_dv_fn_;  // d(du·du)/dv
+    ParameterSpaceDerivative duv_du_fn_;  // d(du·dv)/du
+    ParameterSpaceDerivative duv_dv_fn_;  // d(du·dv)/dv
+    ParameterSpaceDerivative dv2_du_fn_;  // d(dv·dv)/du
+    ParameterSpaceDerivative dv2_dv_fn_;  // d(dv·dv)/dv
 
 public:
     /**
@@ -210,14 +210,21 @@ public:
     // Factory methods
     [[nodiscard]] static std::shared_ptr<Surface> create(
         PositionFunction position_func,
+        DerivativeFunction du_func,
+        DerivativeFunction dv_func,
+        DerivativeFunction duu_func,
+        DerivativeFunction duv_func,
+        DerivativeFunction dvv_func,
+        CurvatureFunction gaussian_func,
+        CurvatureFunction mean_func,
         std::optional<PathSolver> path_solver = std::nullopt,
-        SurfaceType type = SurfaceType::Generic,
-        std::optional<MetricDerivativeFunction> du2_du = std::nullopt,
-        std::optional<MetricDerivativeFunction> du2_dv = std::nullopt,
-        std::optional<MetricDerivativeFunction> duv_du = std::nullopt,
-        std::optional<MetricDerivativeFunction> duv_dv = std::nullopt,
-        std::optional<MetricDerivativeFunction> dv2_du = std::nullopt,
-        std::optional<MetricDerivativeFunction> dv2_dv = std::nullopt
+        SurfaceType type = SurfaceType::Smooth,
+        ParameterSpaceDerivative du2_du = nullptr,
+        ParameterSpaceDerivative du2_dv = nullptr,
+        ParameterSpaceDerivative duv_du = nullptr,
+        ParameterSpaceDerivative duv_dv = nullptr,
+        ParameterSpaceDerivative dv2_du = nullptr,
+        ParameterSpaceDerivative dv2_dv = nullptr
     );
 };
 
