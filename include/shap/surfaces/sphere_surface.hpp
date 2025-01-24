@@ -1,7 +1,6 @@
 #pragma once
 #include "shap/coord.hpp"
-#include "shap/geometry_point2.hpp"
-#include "shap/surface.hpp"
+#include "shap/surface3d.hpp"
 #include <cmath>
 #include <numbers>
 #include <functional>
@@ -41,7 +40,7 @@ static constexpr double HALF_PI = PI / 2;
  * @return Shared pointer to sphere surface
  * @throws std::invalid_argument if radius <= 0 or if any epsilon <= 0
  */
-[[nodiscard]] std::shared_ptr<Surface> create_sphere(
+[[nodiscard]] std::shared_ptr<Surface3D> create_sphere(
     double radius = 1.0,
     double tangent_epsilon = 1e-10,
     double surface_distance_epsilon = 1e-6
@@ -237,7 +236,7 @@ static constexpr double HALF_PI = PI / 2;
 
     // Create surface using std::bind to member functions
     using namespace std::placeholders;
-    return std::make_shared<Surface>(
+    return std::make_shared<Surface3D>(
         std::bind(&SphereSurfaceImpl::position, impl, _1),
         std::bind(&SphereSurfaceImpl::du, impl, _1),
         std::bind(&SphereSurfaceImpl::dv, impl, _1),

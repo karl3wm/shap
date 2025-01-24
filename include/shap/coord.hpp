@@ -23,7 +23,7 @@ struct ParamSpaceTag {};
  */
 template<int N, typename CoordTag, typename SpaceTag>
 class Coord {
-    static_assert(N == 2 || N == 3, "Only 2D and 3D coordinates are supported");
+    static_assert(N >= 1 && N <= 3, "Only 1D, 2D, and 3D coordinates are supported");
     static_assert(std::is_same_v<CoordTag, PointTag> || std::is_same_v<CoordTag, VectorTag>,
                  "CoordTag must be either PointTag or VectorTag");
     static_assert(std::is_same_v<SpaceTag, WorldSpaceTag> || std::is_same_v<SpaceTag, ParamSpaceTag>,
@@ -206,10 +206,17 @@ template<int N, typename SpaceTag>
 }
 
 // Type aliases for common coordinate types
-using WorldPoint3 = Coord<3, PointTag, WorldSpaceTag>;
-using WorldVector3 = Coord<3, VectorTag, WorldSpaceTag>;
+// 1D coordinates (for paths)
+using ParamPoint1 = Coord<1, PointTag, ParamSpaceTag>;
+using ParamVector1 = Coord<1, VectorTag, ParamSpaceTag>;
+
+// 2D coordinates
 using ParamPoint2 = Coord<2, PointTag, ParamSpaceTag>;
 using ParamVector2 = Coord<2, VectorTag, ParamSpaceTag>;
+
+// 3D coordinates
+using WorldPoint3 = Coord<3, PointTag, WorldSpaceTag>;
+using WorldVector3 = Coord<3, VectorTag, WorldSpaceTag>;
 using ParamPoint3 = Coord<3, PointTag, ParamSpaceTag>;
 using ParamVector3 = Coord<3, VectorTag, ParamSpaceTag>;
 

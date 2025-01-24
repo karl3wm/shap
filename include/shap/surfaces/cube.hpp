@@ -1,7 +1,7 @@
-#include "coord.hpp"
 #pragma once
-#include "flat_patch.hpp"
-#include "../surface_collection.hpp"
+#include "shap/coord.hpp"
+#include "shap/surfaces/flat_patch.hpp"
+#include "shap/surface_collection.hpp"
 #include <array>
 #include <string_view>
 
@@ -30,8 +30,8 @@ namespace detail {
     // Helper to connect faces
     inline void connect_faces(
         SurfaceCollection& cube,
-        Surface* face1,
-        Surface* face2,
+        Surface3D* face1,
+        Surface3D* face2,
         ParamIndex param1,
         ParamBound bound1,
         ParamIndex param2,
@@ -123,7 +123,7 @@ namespace detail {
     }};
     
     // Create faces and store pointers
-    std::array<Surface*, NUM_FACES> face_ptrs;
+    std::array<Surface3D*, NUM_FACES> face_ptrs;
     for (size_t i = 0; i < faces.size(); ++i) {
         auto surface = create_flat_patch(
             faces[i].origin,

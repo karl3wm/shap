@@ -1,7 +1,7 @@
 #pragma once
 #include "shap/coord.hpp"
-#include "shap/geometry_point2.hpp"
-#include "shap/surface.hpp"
+#include "shap/geometric_point.hpp"
+#include "shap/surface3d.hpp"
 #include "shap/validation_config.hpp"
 #include <cmath>
 #include <stdexcept>
@@ -61,12 +61,12 @@ void validate_vectors(const WorldVector3& world_u, const WorldVector3& world_v) 
  * @param parameter_bound_epsilon Used in setup_path_solver() for parameter bound checks
  * @return Shared pointer to created surface
  */
-[[nodiscard]] std::shared_ptr<Surface> create_flat_patch(
+[[nodiscard]] std::shared_ptr<Surface3D> create_flat_patch(
     WorldPoint3 origin,
     WorldVector3 world_u,
     WorldVector3 world_v,
-    double vector_length_epsilon,
-    double parameter_bound_epsilon
+    double vector_length_epsilon = ValidationConfig::instance().vector_length_epsilon(),
+    double parameter_bound_epsilon = ValidationConfig::instance().parameter_bound_epsilon()
 ) {
     // Create derived class instance to bind member functions from
     class FlatPatchImpl {
@@ -91,31 +91,6 @@ void validate_vectors(const WorldVector3& world_u, const WorldVector3& world_v) 
         WorldVector3 dvv(const ParamPoint2&) const { return WorldVector3(0, 0, 0); }
         double gaussian(const ParamPoint2&) const { return 0.0; }
         double mean(const ParamPoint2&) const { return 0.0; }
-
-        ParamPoint3 world_to_param(const WorldPoint3& pos) const {
-            // Solve linear system: pos - origin = u*world_u + v*world_v
-            const WorldVector3 rel_pos = pos - origin;
-            
-            // Project point onto surface normal to get signed distance
-            const double normal_dist = rel_pos.dot(normal);
-            
-            // Project point onto surface plane
-            const WorldVector3 planar_pos = rel_pos - normal * normal_dist;
-            
-            // Use Cramer's rule for 2x2 system
-            const double det = world_u.crossed(world_v).length();
-            if (det < ValidationConfig::instance().vector_length_epsilon()) {
-                throw std::invalid_argument(
-                    "Cannot compute local coordinates: basis vectors are nearly parallel"
-                );
-            }
-            
-            // Compute parameter coordinates
-            const double u = planar_pos.crossed(world_v).dot(normal) / det;
-            const double v = world_u.crossed(planar_pos).dot(normal) / det;
-            
-            return ParamPoint3(u, v, normal_dist);
-        }
 
         std::optional<PathIntersection> solve_path(
             const WorldPoint3& start, const WorldVector3& dir, double max_t,
@@ -230,6 +205,31 @@ void validate_vectors(const WorldVector3& world_u, const WorldVector3& world_v) 
             );
         }
 
+        ParamPoint3 world_to_param(const WorldPoint3& pos) const {
+            // Solve linear system: pos - origin = u*world_u + v*world_v
+            const WorldVector3 rel_pos = pos - origin;
+            
+            // Project point onto surface normal to get signed distance
+            const double normal_dist = rel_pos.dot(normal);
+            
+            // Project point onto surface plane
+            const WorldVector3 planar_pos = rel_pos - normal * normal_dist;
+            
+            // Use Cramer's rule for 2x2 system
+            const double det = world_u.crossed(world_v).length();
+            if (det < ValidationConfig::instance().vector_length_epsilon()) {
+                throw std::invalid_argument(
+                    "Cannot compute local coordinates: basis vectors are nearly parallel"
+                );
+            }
+            
+            // Compute parameter coordinates
+            const double u = planar_pos.crossed(world_v).dot(normal) / det;
+            const double v = world_u.crossed(planar_pos).dot(normal) / det;
+            
+            return ParamPoint3(u, v, normal_dist);
+        }
+
         double du2_du(const ParamPoint2&) const { return 0.0; }
         double du2_dv(const ParamPoint2&) const { return 0.0; }
         double duv_du(const ParamPoint2&) const { return 0.0; }
@@ -249,7 +249,7 @@ void validate_vectors(const WorldVector3& world_u, const WorldVector3& world_v) 
 
     // Create surface using std::bind to member functions
     using namespace std::placeholders;
-    return std::make_shared<Surface>(
+    return std::make_shared<Surface3D>(
         std::bind(&FlatPatchImpl::position, impl, _1),
         std::bind(&FlatPatchImpl::du, impl, _1),
         std::bind(&FlatPatchImpl::dv, impl, _1),
@@ -258,7 +258,6 @@ void validate_vectors(const WorldVector3& world_u, const WorldVector3& world_v) 
         std::bind(&FlatPatchImpl::dvv, impl, _1),
         std::bind(&FlatPatchImpl::gaussian, impl, _1),
         std::bind(&FlatPatchImpl::mean, impl, _1),
-        std::bind(&FlatPatchImpl::world_to_param, impl, _1),
         [impl, vector_length_epsilon, parameter_bound_epsilon](const WorldPoint3& start, const WorldVector3& dir, double max_t) {
             return impl->solve_path(start, dir, max_t, vector_length_epsilon, parameter_bound_epsilon);
         },

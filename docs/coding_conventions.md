@@ -45,17 +45,30 @@
 
 2. **Algorithm Epsilons**: Used in specific algorithms as explicit parameters to maintain algorithm visibility and allow user control.
 
-## Coordinate Spaces
+## Manifolds and Coordinate Spaces
 
-The codebase operates on two fundamental spaces:
+The codebase uses a unified manifold-based approach for geometric objects:
 
-1. **Parameter Space**
-   - Domain: [0,1] × [0,1]
-   - Strong types: `ParameterCoordinate`, `ParameterVelocity`
+1. **Manifold Template Parameters**
+   - `ParamDim`: Dimension of parameter space (1 for paths, 2/3 for surfaces)
+   - `TargetDim`: Dimension of target space (2 or 3 for world space)
+   - `SpaceTag`: Indicates target space type (WorldSpaceTag or ParamSpaceTag)
 
-2. **World Space**
-   - Domain: ℝ³
-   - Strong types: `Point`, `Vector`
+2. **Parameter Space**
+   - Domain: [0,1]^n where n is ParamDim
+   - Type: `Coord<ParamDim, PointTag, ParamSpaceTag>`
+   - Used for local coordinates on manifolds
+
+3. **Target Space**
+   - Domain: ℝ^n where n is TargetDim
+   - Type: `Coord<TargetDim, PointTag, SpaceTag>`
+   - Can be world space or parameter space of another manifold
+
+4. **Common Manifold Types**
+   - `WorldPath3D`: 1D → 3D world space paths
+   - `Surface3D`: 2D → 3D world space surfaces
+   - `ParamPath2D`: 1D → 2D parameter space paths
+   - See manifold.hpp for complete list
 
 ## Error Handling
 

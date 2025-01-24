@@ -24,6 +24,10 @@ public:
     double vector_parallel_epsilon() const { return vector_parallel_epsilon_; }
     void set_vector_parallel_epsilon(double epsilon) { vector_parallel_epsilon_ = epsilon; }
 
+    // Epsilon for parameter bound checks
+    double parameter_bound_epsilon() const { return parameter_bound_epsilon_; }
+    void set_parameter_bound_epsilon(double epsilon) { parameter_bound_epsilon_ = epsilon; }
+
 private:
     ValidationConfig() 
         : vector_length_epsilon_(1e-10)
@@ -38,6 +42,7 @@ private:
 
     double vector_length_epsilon_;
     double vector_parallel_epsilon_;
+    double parameter_bound_epsilon_ = 1e-10;
 };
 
 } // namespace shap

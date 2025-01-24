@@ -1,7 +1,7 @@
 #include "shap/coord.hpp"
-#include <shap/surface.hpp>
+#include <shap/surface3d.hpp>
 #include <shap/surfaces/flat_patch.hpp>
-#include <shap/geometry_point2.hpp>
+#include <shap/geometric_point.hpp>
 #include <shap/path.hpp>
 #include "test_utils.hpp"
 #include <cassert>

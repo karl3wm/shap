@@ -1,6 +1,7 @@
-#include "shap/coord.hpp"
-#include "shap/geometry_point2.hpp"
 #include "shap/path.hpp"
+#include "shap/coord.hpp"
+#include "shap/geometric_point.hpp"
+#include "shap/surface3d.hpp"
 #include <stdexcept>
 #include <cmath>
 #include <algorithm>
@@ -29,7 +30,7 @@ void PathSegment::add_point(double t, double u, double v) {
     v_values_.push_back(v);
 }
 
-GeometryPoint2 PathSegment::evaluate(double t) const {
+WorldPoint3 PathSegment::evaluate_position(double t) const {
     validate_parameter(t);
     
     if (t_values_.empty()) {
@@ -39,11 +40,11 @@ GeometryPoint2 PathSegment::evaluate(double t) const {
     // Handle exact endpoints to avoid interpolation issues
     if (t <= t_values_.front()) {
         const auto local = ParamPoint2(u_values_.front(), v_values_.front());
-        return surface_->evaluate(local);
+        return surface_->evaluate(local).world_pos();
     }
     if (t >= t_values_.back()) {
         const auto local = ParamPoint2(u_values_.back(), v_values_.back());
-        return surface_->evaluate(local);
+        return surface_->evaluate(local).world_pos();
     }
     
     // Find segment containing t
@@ -63,27 +64,12 @@ GeometryPoint2 PathSegment::evaluate(double t) const {
     
     const auto local = ParamPoint2(u, v);
     auto geom = surface_->evaluate(local);
-    
-    // Diagnostic: Log evaluation details
-    std::cout << "\nPath Evaluation Diagnostics:\n"
-              << "t = " << t << "\n"
-              << "Segment: " << segment_idx << " of " << (t_values_.size() - 1) << "\n"
-              << "t range: [" << t_values_[segment_idx] << ", " << t_values_[segment_idx+1] << "]\n"
-              << "alpha = " << alpha << "\n"
-              << "Parameters: u=" << u << " v=" << v << "\n"
-              << "Position: " << geom.world_pos().x() << ", "
-              << geom.world_pos().y() << ", " << geom.world_pos().z() << "\n"
-              << "Distance from start: " 
-              << (geom.world_pos() - surface_->evaluate(
-                     ParamPoint2(u_values_.front(), v_values_.front())
-                 ).world_pos()).length() << "\n";
-              
-    return geom;
+    return geom.world_pos();
 }
 
 void GeodesicCurve::compute_developable_geodesic(
-    const GeometryPoint2& start,
-    const GeometryPoint2& end
+    const GeometricPoint<2, 3, WorldSpaceTag>& start,
+    const GeometricPoint<2, 3, WorldSpaceTag>& end
 ) {
     constexpr int steps = 20;
     points_.clear();
@@ -91,19 +77,19 @@ void GeodesicCurve::compute_developable_geodesic(
     
     const auto& start_local = start.local_pos();
     const auto& end_local = end.local_pos();
-    const double du = end_local.u() - start_local.u();
-    const double dv = end_local.v() - start_local.v();
+    const double du = end_local[0] - start_local[0];
+    const double dv = end_local[1] - start_local[1];
     
     for (int i = 0; i <= steps; ++i) {
         const double t = static_cast<double>(i) / steps;
-        const double u = start_local.u() + t * du;
-        const double v = start_local.v() + t * dv;
+        const double u = start_local[0] + t * du;
+        const double v = start_local[1] + t * dv;
         const auto local = ParamPoint2(u, v);
         points_.push_back(surface_->evaluate(local));
     }
 }
 
-GeometryPoint2 GeodesicCurve::evaluate(double t) const {
+WorldPoint3 GeodesicCurve::evaluate_position(double t) const {
     validate_parameter(t);
     
     if (points_.empty()) {
@@ -123,14 +109,14 @@ GeometryPoint2 GeodesicCurve::evaluate(double t) const {
     const auto& p0_local = p0.local_pos();
     const auto& p1_local = p1.local_pos();
     
-    const double u = p0_local.u() + (p1_local.u() - p0_local.u()) * alpha;
-    const double v = p0_local.v() + (p1_local.v() - p0_local.v()) * alpha;
+    const double u = p0_local[0] + (p1_local[0] - p0_local[0]) * alpha;
+    const double v = p0_local[1] + (p1_local[1] - p0_local[1]) * alpha;
     
     const auto local = ParamPoint2(u, v);
-    return surface_->evaluate(local);
+    return surface_->evaluate(local).world_pos();
 }
 
-WorldVector3 GeodesicCurve::tangent(double t) const {
+WorldVector3 GeodesicCurve::evaluate_tangent(double t) const {
     validate_parameter(t);
     
     if (points_.size() < 2) {
@@ -153,12 +139,15 @@ WorldVector3 GeodesicCurve::tangent(double t) const {
     return diff.normalized();
 }
 
-WorldVector3 GeodesicCurve::normal(double t) const {
+WorldVector3 GeodesicCurve::evaluate_normal(double t) const {
     validate_parameter(t);
-    return evaluate(t).world_normal();
+    const auto local = ParamPoint2(points_[0].local_pos()[0], points_[0].local_pos()[1]);
+    const auto geom = surface_->evaluate(local);
+    const auto& derivs = geom.derivatives();
+    return derivs[0].crossed(derivs[1]).normalized();
 }
 
-WorldVector3 PathSegment::tangent(double t) const {
+WorldVector3 PathSegment::evaluate_tangent(double t) const {
     validate_parameter(t);
     
     if (t_values_.size() < 2) {
@@ -191,13 +180,19 @@ WorldVector3 PathSegment::tangent(double t) const {
     return diff.normalized();
 }
 
-WorldVector3 PathSegment::normal(double t) const {
+WorldVector3 PathSegment::evaluate_normal(double t) const {
     validate_parameter(t);
-    return evaluate(t).world_normal();
+    if (t_values_.empty()) {
+        throw std::runtime_error("Path segment has no points");
+    }
+    const auto local = ParamPoint2(u_values_[0], v_values_[0]);
+    const auto geom = surface_->evaluate(local);
+    const auto& derivs = geom.derivatives();
+    return derivs[0].crossed(derivs[1]).normalized();
 }
 
 void TransitionPath::add_segment(
-    std::shared_ptr<Surface> surface,
+    std::shared_ptr<Surface3D> surface,
     double t_start, double t_end,
     double u_start, double u_end,
     double v_start, double v_end,
@@ -208,7 +203,7 @@ void TransitionPath::add_segment(
     }
 
     auto segment = std::make_unique<PathSegment>(
-        std::shared_ptr<Surface>(const_cast<Surface*>(surface.get()), [](Surface*){})
+        std::shared_ptr<Surface3D>(const_cast<Surface3D*>(surface.get()), [](Surface3D*){})
     );
     
     // Adaptive sampling based on surface curvature
@@ -217,30 +212,36 @@ void TransitionPath::add_segment(
     // Get surface properties at start
     const auto start_local = ParamPoint2(u_start, v_start);
     const auto geom = surface->evaluate(start_local);
-    if (geom.gaussian_curvature()) {
-        const double curvature = std::abs(*geom.gaussian_curvature());
+    // Calculate Gaussian curvature from derivatives
+    const auto& derivs = geom.derivatives();
+    const auto& du_vec = derivs[0];
+    const auto& dv_vec = derivs[1];
+    const auto normal = du_vec.crossed(dv_vec).normalized();
+    const double curvature = std::abs(normal.dot(du_vec.crossed(dv_vec)));
+    if (curvature > CURVATURE_EPSILON) {
         num_points += static_cast<int>(5.0 * std::sqrt(curvature));
     }
     
     // Pre-compute parameter deltas
-    const double dt = t_end - t_start;
-    const double du = u_end - u_start;
-    const double dv = v_end - v_start;
+    // Pre-compute parameter deltas for interpolation
+    const double dt_param = t_end - t_start;
+    const double du_param = u_end - u_start;
+    const double dv_param = v_end - v_start;
     
     // Linear interpolation for transition paths
     for (int i = 0; i < num_points; ++i) {
         const double alpha = static_cast<double>(i) / (num_points - 1);
         segment->add_point(
-            t_start + dt * alpha,
-            u_start + du * alpha,
-            v_start + dv * alpha
+            t_start + dt_param * alpha,
+            u_start + du_param * alpha,
+            v_start + dv_param * alpha
         );
     }
     
     segments_.push_back(std::move(segment));
 }
 
-GeometryPoint2 TransitionPath::evaluate(double t) const {
+WorldPoint3 TransitionPath::evaluate_position(double t) const {
     validate_parameter(t);
     
     if (segments_.empty()) {
@@ -250,15 +251,15 @@ GeometryPoint2 TransitionPath::evaluate(double t) const {
     // Find segment containing t
     for (const auto& segment : segments_) {
         if (t <= segment->t_values().back()) {
-            return segment->evaluate(t);
+            return segment->evaluate_position(t);
         }
     }
     
     // If t is beyond last segment, evaluate at end of last segment
-    return segments_.back()->evaluate(segments_.back()->t_values().back());
+    return segments_.back()->evaluate_position(segments_.back()->t_values().back());
 }
 
-WorldVector3 TransitionPath::tangent(double t) const {
+WorldVector3 TransitionPath::evaluate_tangent(double t) const {
     validate_parameter(t);
     
     if (segments_.empty()) {
@@ -268,15 +269,15 @@ WorldVector3 TransitionPath::tangent(double t) const {
     // Find segment containing t
     for (const auto& segment : segments_) {
         if (t <= segment->t_values().back()) {
-            return segment->tangent(t);
+            return segment->evaluate_tangent(t);
         }
     }
     
     // If t is beyond last segment, use tangent at end of last segment
-    return segments_.back()->tangent(segments_.back()->t_values().back());
+    return segments_.back()->evaluate_tangent(segments_.back()->t_values().back());
 }
 
-WorldVector3 TransitionPath::normal(double t) const {
+WorldVector3 TransitionPath::evaluate_normal(double t) const {
     validate_parameter(t);
     
     if (segments_.empty()) {
@@ -286,12 +287,12 @@ WorldVector3 TransitionPath::normal(double t) const {
     // Find segment containing t
     for (const auto& segment : segments_) {
         if (t <= segment->t_values().back()) {
-            return segment->normal(t);
+            return segment->evaluate_normal(t);
         }
     }
     
     // If t is beyond last segment, use normal at end of last segment
-    return segments_.back()->normal(segments_.back()->t_values().back());
+    return segments_.back()->evaluate_normal(segments_.back()->t_values().back());
 }
 
 } // namespace shap

@@ -72,7 +72,7 @@ std::unique_ptr<SurfacePath> SurfaceCollection::create_path(
                 
                 // Add segment up to intersection
                 path->add_segment(
-                    std::shared_ptr<Surface>(const_cast<Surface*>(current_surface), [](Surface*) {}),
+                    current_surface->impl(),
                     t, t + intersection->t,
                     start_local.u(), end_local.u(),
                     start_local.v(), end_local.v(),
@@ -113,8 +113,8 @@ std::unique_ptr<SurfacePath> SurfaceCollection::create_path(
         
         // Scale parameter derivatives by inverse of surface scale factors
         const auto [du_scale, dv_scale] = current_surface->get_scale_factors(start_local);
-        const double scaled_du = param_vel.x() / (du_scale > 1e-10 ? du_scale : 1.0);
-        const double scaled_dv = param_vel.y() / (dv_scale > 1e-10 ? dv_scale : 1.0);
+        const double scaled_du = param_vel.u() / (du_scale > 1e-10 ? du_scale : 1.0);
+        const double scaled_dv = param_vel.v() / (dv_scale > 1e-10 ? dv_scale : 1.0);
         
         // Compute end parameters
         const auto end_local = ParamPoint2(
@@ -124,7 +124,7 @@ std::unique_ptr<SurfacePath> SurfaceCollection::create_path(
         
         // Add final segment
         path->add_segment(
-            std::shared_ptr<Surface>(const_cast<Surface*>(current_surface), [](Surface*) {}),
+            current_surface->impl(),
             t, world_length,
             start_local.u(), end_local.u(),
             start_local.v(), end_local.v(),

@@ -3,9 +3,9 @@
 #include "edge_connection.hpp"
 #include "edge_descriptor.hpp"
 #include "geometry_point2.hpp"
-#include "param_bound.hpp"
-#include "param_index.hpp"
+#include "path_intersection.hpp"
 #include "surface_type.hpp"
+#include "surface3d.hpp"
 #include <functional>
 #include <memory>
 #include <optional>
@@ -17,76 +17,20 @@ namespace shap {
 class SurfacePoint;
 class SurfacePath;
 
-// Function types for surface creation and metric calculations
-using PositionFunction = std::function<WorldPoint3(const ParamPoint2&)>;
-using DerivativeFunction = std::function<WorldVector3(const ParamPoint2&)>;
-using CurvatureFunction = std::function<double(const ParamPoint2&)>;
-using ParameterSpaceDerivative = std::function<double(const ParamPoint2&)>;
-
-// Path solver returns intersection with surface boundary
-struct PathIntersection {
-    double t;                // Distance to intersection in world space
-    WorldPoint3 position;    // World space intersection point
-    ParamIndex param;        // Which parameter (u/v) hit boundary
-    ParamBound bound;        // Which bound (0/1) was hit
-    double edge_parameter;   // Parameter along the edge [0,1]
-
-    // Constructor with validation
-    PathIntersection(
-        double t_,
-        WorldPoint3 position_,
-        ParamIndex param_,
-        ParamBound bound_,
-        double edge_parameter_
-    ) : t(t_)
-      , position(std::move(position_))
-      , param(param_)
-      , bound(bound_)
-      , edge_parameter(edge_parameter_) {
-        if (t_ < 0) {
-            throw std::invalid_argument("Intersection distance must be non-negative");
-        }
-        if (edge_parameter_ < 0 || edge_parameter_ > 1) {
-            throw std::invalid_argument("Edge parameter must be in [0,1]");
-        }
-    }
-};
-
-using PathSolver = std::function<std::optional<PathIntersection>(
-    const WorldPoint3& world_start,
-    const WorldVector3& world_direction,
-    double max_world_distance
-)>;
-
-// Forward declarations
-class RiemannianMetric;
-
-// Function type for converting world space to parameter space
-using WorldToParamFunction = std::function<ParamPoint3(const WorldPoint3&)>;
-
+/**
+ * Legacy surface class that adapts to the new Surface3D interface.
+ * This class will be deprecated once all code is migrated to use Surface3D directly.
+ */
 class Surface {
     friend class RiemannianMetric;
 public:
-    // Constructor with all required function objects
-    Surface(
-        PositionFunction position_func,
-        DerivativeFunction du_func,
-        DerivativeFunction dv_func,
-        DerivativeFunction duu_func,
-        DerivativeFunction duv_func,
-        DerivativeFunction dvv_func,
-        CurvatureFunction gaussian_func,
-        CurvatureFunction mean_func,
-        WorldToParamFunction world_to_param_func,
-        std::optional<PathSolver> path_solver = std::nullopt,
-        SurfaceType type = SurfaceType::Smooth,
-        ParameterSpaceDerivative du2_du = nullptr,
-        ParameterSpaceDerivative du2_dv = nullptr,
-        ParameterSpaceDerivative duv_du = nullptr,
-        ParameterSpaceDerivative duv_dv = nullptr,
-        ParameterSpaceDerivative dv2_du = nullptr,
-        ParameterSpaceDerivative dv2_dv = nullptr
-    );
+    using Ptr = std::shared_ptr<Surface>;
+
+    explicit Surface(std::shared_ptr<Surface3D> impl) : impl_(std::move(impl)) {
+        if (!impl_) {
+            throw std::invalid_argument("Surface3D implementation cannot be null");
+        }
+    }
     
     // Prevent copying
     Surface(const Surface&) = delete;
@@ -96,66 +40,37 @@ public:
     Surface(Surface&&) noexcept = default;
     Surface& operator=(Surface&&) noexcept = default;
 
-private:
-    // Surface functions
-    PositionFunction position_func_;
-    DerivativeFunction du_func_;
-    DerivativeFunction dv_func_;
-    DerivativeFunction duu_func_;
-    DerivativeFunction duv_func_;
-    DerivativeFunction dvv_func_;
-    CurvatureFunction gaussian_curv_func_;
-    CurvatureFunction mean_curv_func_;
-    WorldToParamFunction world_to_param_func_;
-    std::optional<PathSolver> path_solver_;
-    SurfaceType type_;
+    // Get underlying Surface3D implementation
+    [[nodiscard]] std::shared_ptr<Surface3D> impl() const noexcept { return impl_; }
 
-    // Parameter space derivative functions
-    ParameterSpaceDerivative du2_du_fn_;  // d(du·du)/du
-    ParameterSpaceDerivative du2_dv_fn_;  // d(du·du)/dv
-    ParameterSpaceDerivative duv_du_fn_;  // d(du·dv)/du
-    ParameterSpaceDerivative duv_dv_fn_;  // d(du·dv)/dv
-    ParameterSpaceDerivative dv2_du_fn_;  // d(dv·dv)/du
-    ParameterSpaceDerivative dv2_dv_fn_;  // d(dv·dv)/dv
-
-public:
     /**
      * Evaluate surface at parameter space point.
-     * 
-     * @param local Parameter space coordinates
-     * @return GeometryPoint2 containing full geometric information
-     * @throws std::invalid_argument if coordinates are invalid
      */
-    [[nodiscard]] GeometryPoint2 evaluate(const ParamPoint2& local) const;
+    [[nodiscard]] GeometryPoint2 evaluate(const ParamPoint2& local) const {
+        auto geom3d = impl_->evaluate(local);
+        const auto& du = geom3d.derivatives()[0];
+        const auto& dv = geom3d.derivatives()[1];
+        // Calculate normal as cross product of derivatives
+        WorldVector3 normal = du.crossed(dv).normalized();
+        return GeometryPoint2(
+            this,
+            local,
+            geom3d.world_pos(),
+            normal,
+            du,
+            dv
+        );
+    }
     
     /**
      * Convert a world space position to local coordinates.
-     * 
-     * This function computes three coordinates that fully describe a point's position
-     * relative to the surface:
-     * - u,v: Param parameter coordinates in [0,1]×[0,1]
-     * - normal: Signed distance along surface normal vector
-     *
-     * For points on the surface, normal will be 0 (within ValidationConfig::vector_length_epsilon).
-     * Positive normal indicates the point is on the positive side of the surface
-     * (in the direction of the normal vector).
-     *
-     * @param pos World space position to convert
-     * @return ParamPoint3 containing local coordinates
-     * @throws std::invalid_argument if coordinate computation fails
      */
     [[nodiscard]] ParamPoint3 world_to_param(const WorldPoint3& pos) const {
-        return world_to_param_func_(pos);
+        return impl_->world_to_param(pos);
     }
     
     /**
      * Create a path on the surface starting from a point in a given direction.
-     * 
-     * @param start Starting point on the surface
-     * @param world_direction Desired world-space direction (will be projected onto surface)
-     * @param world_length Desired path length in world space units
-     * @throws std::invalid_argument if preconditions are not met
-     * @return Unique pointer to path object representing the curve
      */
     [[nodiscard]] std::unique_ptr<SurfacePath> create_path(
         const GeometryPoint2& start,
@@ -163,73 +78,73 @@ public:
         double world_length
     ) const;
     
-    // Get path solver if available
-    [[nodiscard]] std::optional<PathSolver> get_path_solver() const noexcept {
-        return path_solver_;
-    }
-    
     // Get surface type
     [[nodiscard]] SurfaceType surface_type() const noexcept {
-        return type_;
+        return impl_->surface_type();
     }
-    
-    
-    /**
-     * Convert world space direction to parameter space velocity.
-     * Accounts for surface metric tensor in the conversion.
-     *
-     * @param world_direction Direction vector in world space
-     * @param world_du First derivative in u direction
-     * @param world_dv First derivative in v direction
-     * @return Velocity vector in parameter space
-     */
-    [[nodiscard]] WorldVector3 world_to_parameter_velocity(
-        const WorldVector3& world_direction,
-        const WorldVector3& world_du,
-        const WorldVector3& world_dv
-    ) const noexcept;
     
     /**
      * Get scale factors for converting between parameter and world space.
-     * These represent how much a unit step in parameter space maps to in world space.
-     *
-     * @param param Parameter space point to compute scale factors at
-     * @return Pair of scale factors (du_scale, dv_scale)
      */
     [[nodiscard]] std::pair<double, double> get_scale_factors(
         const ParamPoint2& local
     ) const {
-        const auto geom = evaluate(local);
-        return {geom.world_du().length(), geom.world_dv().length()};
+        return impl_->get_scale_factors(local);
     }
 
-protected:
-    // Validate parameter values are in [0,1]
-    static void validate_parameters([[maybe_unused]] const ParamPoint2& local) {
-        // ParamPoint2 constructor handles validation
-    }
-
-public:
     // Metric component derivative accessors
     [[nodiscard]] double du2_du(const ParamPoint2& param) const noexcept {
-        return du2_du_fn_ ? du2_du_fn_(param) : 0.0;
+        return impl_->du2_du(param);
     }
     [[nodiscard]] double du2_dv(const ParamPoint2& param) const noexcept {
-        return du2_dv_fn_ ? du2_dv_fn_(param) : 0.0;
+        return impl_->du2_dv(param);
     }
     [[nodiscard]] double duv_du(const ParamPoint2& param) const noexcept {
-        return duv_du_fn_ ? duv_du_fn_(param) : 0.0;
+        return impl_->duv_du(param);
     }
     [[nodiscard]] double duv_dv(const ParamPoint2& param) const noexcept {
-        return duv_dv_fn_ ? duv_dv_fn_(param) : 0.0;
+        return impl_->duv_dv(param);
     }
     [[nodiscard]] double dv2_du(const ParamPoint2& param) const noexcept {
-        return dv2_du_fn_ ? dv2_du_fn_(param) : 0.0;
+        return impl_->dv2_du(param);
     }
     [[nodiscard]] double dv2_dv(const ParamPoint2& param) const noexcept {
-        return dv2_dv_fn_ ? dv2_dv_fn_(param) : 0.0;
+        return impl_->dv2_dv(param);
     }
 
+    /**
+     * Get path solver if available.
+     */
+    [[nodiscard]] std::optional<PathSolver> get_path_solver() const noexcept {
+        return impl_->get_path_solver();
+    }
+
+    /**
+     * Convert world space velocity to parameter space.
+     */
+    [[nodiscard]] ParamVector2 world_to_parameter_velocity(
+        const WorldVector3& world_vel,
+        const WorldVector3& du,
+        const WorldVector3& dv
+    ) const {
+        // Project velocity onto tangent plane
+        const auto normal = du.crossed(dv).normalized();
+        const auto planar_vel = world_vel - world_vel.dot(normal) * normal;
+        
+        // Solve for parameter velocities using derivatives
+        const double det = du.crossed(dv).length();
+        if (det < 1e-10) {
+            throw std::invalid_argument("Surface derivatives are nearly parallel");
+        }
+        
+        const double du_dt = planar_vel.crossed(dv).dot(normal) / det;
+        const double dv_dt = du.crossed(planar_vel).dot(normal) / det;
+        
+        return ParamVector2(du_dt, dv_dt);
+    }
+
+private:
+    std::shared_ptr<Surface3D> impl_;
 };
 
 } // namespace shap
