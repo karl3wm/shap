@@ -25,11 +25,11 @@ void test_path_length_invariants_passing() {
     const double length = 1.0;
     const double expected_param_delta = 0.25;  // L/(2|du|) = 1.0/(2*2)
 
-    const auto params = face->world_to_param(start);
-    const auto start_point = face->evaluate(params.uv());
+    const auto params = face->nearest(start);
+    const auto start_point = face->evaluate(params);
     auto path = face->create_path(start_point, dir, length);
 
-    const auto end_pt = path->evaluate(1.0);
+    const auto end_pt = path->evaluate(ParamPoint1(1.0));
     const double actual_param_delta = end_pt.local_pos().u() - 
                                     start_point.local_pos().u();
 
@@ -51,14 +51,14 @@ void test_path_length_invariants_failing() {
     const WorldVector3 dir(1, 0, 0);
     const double length = 1.0;
 
-    const auto params = face->world_to_param(start);
-    const auto start_point = face->evaluate(params.uv());
+    const auto params = face->nearest(start);
+    const auto start_point = face->evaluate(params);
     auto path = face->create_path(start_point, dir, length);
 
     // Check key points for distance preservation
     const std::vector<double> check_points = {0.0, 0.2, 0.4, 0.6, 0.8, 1.0};
     for (double t : check_points) {
-        const auto pt = path->evaluate(t);
+        const auto pt = path->evaluate(ParamPoint1(t));
         const auto pos = pt.world_pos();
         const double actual_dist = (pos - start).length();
         const double expected_dist = t * length;

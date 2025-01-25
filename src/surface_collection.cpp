@@ -1,11 +1,13 @@
 #include "shap/coord.hpp"
 #include "shap/surface_collection.hpp"
+#include "shap/manifold.hpp"
+#include "shap/riemannian_metric.hpp"
 #include <algorithm>
 #include <iostream>
 
 namespace shap {
 
-GeometryPoint2 SurfaceConnection::map_point(const GeometryPoint2& point) const {
+GeometricPoint<2, 3, WorldSpaceTag> SurfaceConnection::map_point(const GeometricPoint<2, 3, WorldSpaceTag>& point) const {
     // Get edge descriptor for source point
     const auto edge_desc = point.get_edge_descriptor();
     if (!edge_desc) {
@@ -39,7 +41,7 @@ GeometryPoint2 SurfaceConnection::map_point(const GeometryPoint2& point) const {
 }
 
 std::unique_ptr<SurfacePath> SurfaceCollection::create_path(
-    const GeometryPoint2& start,
+    const GeometricPoint<2, 3, WorldSpaceTag>& start,
     const WorldVector3& world_direction,
     double world_length
 ) const {
@@ -50,7 +52,8 @@ std::unique_ptr<SurfacePath> SurfaceCollection::create_path(
         throw std::invalid_argument("Direction vector cannot be zero");
     }
 
-    auto path = std::make_unique<TransitionPath>();
+    // Create transition path to handle multiple surfaces
+    auto path = std::make_shared<TransitionPath>();
     double t = 0.0;
     auto current = start;
     auto current_dir = world_direction;
@@ -67,15 +70,16 @@ std::unique_ptr<SurfacePath> SurfaceCollection::create_path(
             auto intersection = (*solver)(current.world_pos(), current_dir, world_length - t);
             if (intersection) {
                 // Convert end point to parameter space
-                const auto end_local = current_surface->world_to_param(intersection->position).uv();
+                const auto end_local = current_surface->nearest(intersection->position);
                 const auto& start_local = current.local_pos();
                 
                 // Add segment up to intersection
                 path->add_segment(
-                    current_surface->impl(),
-                    t, t + intersection->t,
-                    start_local.u(), end_local.u(),
-                    start_local.v(), end_local.v(),
+                    std::const_pointer_cast<Surface3D>(
+                        std::dynamic_pointer_cast<const Surface3D>(current_surface->shared_from_this())
+                    ),
+                    ParamPoint1(t), ParamPoint1(t + intersection->t),
+                    start_local, end_local,
                     current_dir
                 );
                 
@@ -106,10 +110,22 @@ std::unique_ptr<SurfacePath> SurfaceCollection::create_path(
         const double remaining = world_length - t;
         const auto& start_local = current.local_pos();
         
-        // Convert direction to parameter space and scale by surface metric
+        // Convert direction to parameter space using metric tensor
         const auto geom = current_surface->evaluate(start_local);
-        const auto param_vel = current_surface->world_to_parameter_velocity(
-            current_dir, geom.world_du(), geom.world_dv());
+        const auto& derivs = geom.derivatives();
+        const auto normal = derivs[0].crossed(derivs[1]).normalized();
+        
+        // Create metric tensor at current point
+        RiemannianMetric metric(
+            derivs[0].dot(derivs[0]),  // g11
+            derivs[0].dot(derivs[1]),  // g12
+            derivs[1].dot(derivs[1]),  // g22
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0  // Derivatives not needed for pullback
+        );
+        
+        // Use pullback to convert world velocity to parameter space
+        const auto param_vec = metric.pullback(current_dir, derivs[0], derivs[1], normal);
+        const auto param_vel = ParamVector2(param_vec.u(), param_vec.v());
         
         // Scale parameter derivatives by inverse of surface scale factors
         const auto [du_scale, dv_scale] = current_surface->get_scale_factors(start_local);
@@ -124,16 +140,25 @@ std::unique_ptr<SurfacePath> SurfaceCollection::create_path(
         
         // Add final segment
         path->add_segment(
-            current_surface->impl(),
-            t, world_length,
-            start_local.u(), end_local.u(),
-            start_local.v(), end_local.v(),
+            std::const_pointer_cast<Surface3D>(
+                std::dynamic_pointer_cast<const Surface3D>(current_surface->shared_from_this())
+            ),
+            ParamPoint1(t), ParamPoint1(world_length),
+            start_local, end_local,
             current_dir
         );
         break;
     }
     
-    return path;
+    // Create path with evaluation functions from the transition path
+    return std::make_unique<SurfacePath>(
+        [p = path](const ParamPoint1& param) { return p->evaluate(param).world_pos(); },
+        [p = path](const ParamPoint1& param) { return p->derivatives(param)[0]; },
+        [p = path](const ParamPoint1& param) { 
+            const auto derivs = p->derivatives(param);
+            return derivs[0].crossed(derivs[1]).normalized();
+        }
+    );
 }
 
 } // namespace shap

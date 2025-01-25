@@ -148,15 +148,12 @@ static constexpr double HALF_PI = PI / 2;
             return 1.0 / radius;
         }
 
-        ParamPoint3 world_to_param(const WorldPoint3& pos) const {
+        ParamPoint2 nearest(const WorldPoint3& pos) const {
             // Get distance from origin
             const double r = pos.length();
             if (r < ValidationConfig::instance().vector_length_epsilon()) {
                 throw std::invalid_argument("Cannot compute parameters for zero position vector");
             }
-            
-            // Get signed distance from sphere surface
-            const double normal_dist = r - radius;
             
             // Normalize position to unit sphere for parameter computation
             const double inv_r = 1.0 / r;
@@ -172,7 +169,7 @@ static constexpr double HALF_PI = PI / 2;
             if (u < 0) u += TWO_PI;
             
             // Convert to parameter space [0,1]×[0,1]
-            return ParamPoint3(u / TWO_PI, v / PI, normal_dist);
+            return ParamPoint2(u / TWO_PI, v / PI);
         }
 
         std::optional<PathIntersection> solve_path(
@@ -245,7 +242,7 @@ static constexpr double HALF_PI = PI / 2;
         std::bind(&SphereSurfaceImpl::dvv, impl, _1),
         std::bind(&SphereSurfaceImpl::gaussian, impl, _1),
         std::bind(&SphereSurfaceImpl::mean, impl, _1),
-        std::bind(&SphereSurfaceImpl::world_to_param, impl, _1),
+        std::bind(&SphereSurfaceImpl::nearest, impl, _1),
         [impl, tangent_epsilon](const WorldPoint3& start, const WorldVector3& dir, double max_t) {
             return impl->solve_path(start, dir, max_t, tangent_epsilon);
         },

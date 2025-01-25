@@ -1,8 +1,9 @@
-#include "coord.hpp"
 #pragma once
-#include "geometry_point2.hpp"
+#include "coord.hpp"
+#include "edge_descriptor.hpp"
+#include "geometric_point.hpp"
 #include "path.hpp"
-#include "surface.hpp"
+#include "surface3d.hpp"
 #include <vector>
 #include <memory>
 
@@ -15,7 +16,7 @@ namespace shap {
 class SurfaceConnection {
 public:
     SurfaceConnection(
-        Surface* target_surface,
+        Surface3D* target_surface,
         EdgeDescriptor target_edge_desc,
         int orientation_sign
     ) : target_(target_surface)
@@ -23,10 +24,10 @@ public:
       , orientation_(orientation_sign) {}
 
     // Map a point from source surface to target surface
-    [[nodiscard]] GeometryPoint2 map_point(const GeometryPoint2& point) const;
+    [[nodiscard]] GeometricPoint<2, 3, WorldSpaceTag> map_point(const GeometricPoint<2, 3, WorldSpaceTag>& point) const;
 
 private:
-    Surface* target_;              // Target surface for connection
+    Surface3D* target_;              // Target surface for connection
     EdgeDescriptor target_edge_;   // Edge descriptor on target surface
     int orientation_;             // +1 if parameters map directly, -1 if reversed
 };
@@ -38,21 +39,21 @@ private:
 class SurfaceCollection {
 public:
     // Add a surface to the collection
-    void add_surface(std::shared_ptr<Surface> surface) {
+    void add_surface(std::shared_ptr<Surface3D> surface) {
         surfaces_.push_back(std::move(surface));
     }
 
     // Get a surface by index
-    [[nodiscard]] Surface* get_surface(size_t index) const {
+    [[nodiscard]] Surface3D* get_surface(size_t index) const {
         if (index >= surfaces_.size()) return nullptr;
         return surfaces_[index].get();
     }
 
     // Add a connection between surfaces
     void add_connection(
-        Surface* source,
+        Surface3D* source,
         EdgeDescriptor source_edge,
-        Surface* target,
+        Surface3D* target,
         EdgeDescriptor target_edge,
         int orientation
     ) {
@@ -65,14 +66,14 @@ public:
 
     // Create a path across multiple surfaces
     [[nodiscard]] std::unique_ptr<SurfacePath> create_path(
-        const GeometryPoint2& start,
+        const GeometricPoint<2, 3, WorldSpaceTag>& start,
         const WorldVector3& world_direction,
         double world_length
     ) const;
 
 protected:
     // Find connection for a point on a surface edge
-    [[nodiscard]] const SurfaceConnection* find_connection(const GeometryPoint2& point) const {
+    [[nodiscard]] const SurfaceConnection* find_connection(const GeometricPoint<2, 3, WorldSpaceTag>& point) const {
         if (!point.is_on_edge()) return nullptr;
         
         const auto edge_desc = point.get_edge_descriptor();
@@ -92,12 +93,12 @@ protected:
 private:
     // Connection between two surfaces
     struct Connection {
-        Surface* source;
+        Surface3D* source;
         EdgeDescriptor source_edge;
         std::unique_ptr<SurfaceConnection> connection;
 
         Connection(
-            Surface* src,
+            Surface3D* src,
             EdgeDescriptor src_edge,
             std::unique_ptr<SurfaceConnection> conn
         ) : source(src)
@@ -105,7 +106,7 @@ private:
           , connection(std::move(conn)) {}
     };
 
-    std::vector<std::shared_ptr<Surface>> surfaces_;
+    std::vector<std::shared_ptr<Surface3D>> surfaces_;
     std::vector<Connection> connections_;
 };
 

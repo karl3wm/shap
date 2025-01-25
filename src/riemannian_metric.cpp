@@ -59,23 +59,26 @@ double RiemannianMetric::dg_dv(int i, int j) const noexcept {
     return 0.0;
 }
 
-ParamVector2 RiemannianMetric::raise_indices(const ParamVector2& covariant_vec) const {
+ParamVector2 RiemannianMetric::raise_indices(const ParamVector2& cotangent_vec) const {
+    // Convert from cotangent space (covariant) to tangent space (contravariant)
     const double det = determinant();
     const double validation_epsilon = ValidationConfig::instance().vector_length_epsilon();
     if (std::abs(det) < validation_epsilon) {
         throw std::runtime_error("Degenerate metric tensor");
     }
 
+    // Use inverse metric tensor to raise indices
     return ParamVector2(
-        (g22_ * covariant_vec.u() - g12_ * covariant_vec.v()) / det,
-        (-g12_ * covariant_vec.u() + g11_ * covariant_vec.v()) / det
+        (g22_ * cotangent_vec.u() - g12_ * cotangent_vec.v()) / det,  // g^11 * v_1 + g^12 * v_2
+        (-g12_ * cotangent_vec.u() + g11_ * cotangent_vec.v()) / det  // g^21 * v_1 + g^22 * v_2
     );
 }
 
-ParamVector2 RiemannianMetric::lower_indices(const ParamVector2& contravariant_vec) const noexcept {
+ParamVector2 RiemannianMetric::lower_indices(const ParamVector2& tangent_vec) const noexcept {
+    // Convert from tangent space (contravariant) to cotangent space (covariant)
     return ParamVector2(
-        g11_ * contravariant_vec.u() + g12_ * contravariant_vec.v(),
-        g12_ * contravariant_vec.u() + g22_ * contravariant_vec.v()
+        g11_ * tangent_vec.u() + g12_ * tangent_vec.v(),  // g_11 * v^1 + g_12 * v^2
+        g12_ * tangent_vec.u() + g22_ * tangent_vec.v()   // g_21 * v^1 + g_22 * v^2
     );
 }
 
@@ -147,33 +150,32 @@ void RiemannianMetric::verify_metric_consistency(
     }
 }
 
-ParamVector3 RiemannianMetric::pullback_vector(
+ParamVector3 RiemannianMetric::pullback(
     const WorldVector3& world_vec,
     const WorldVector3& world_du,
     const WorldVector3& world_dv,
     const WorldVector3& world_normal
 ) const {
-    // Get normal component
+    // Decompose world vector into tangential and normal components
     const double normal_component = world_vec.dot(world_normal);
-    
-    // Get tangential component
     const WorldVector3 tangent_vec = world_vec - world_normal * normal_component;
 
     verify_metric_consistency(world_du, world_dv);
 
-    // Get contravariant components in parameter space using dot products
-    const ParamVector2 tangent_params(
-        tangent_vec.dot(world_du),
-        tangent_vec.dot(world_dv)
+    // Project onto basis vectors to get cotangent (covariant) components
+    const ParamVector2 cotangent_components(
+        tangent_vec.dot(world_du),  // Measure change along u direction
+        tangent_vec.dot(world_dv)   // Measure change along v direction
     );
 
-    // Convert to parameter space using raise_indices
-    const ParamVector2 param_vec = raise_indices(tangent_params);
+    // Convert to tangent (contravariant) components
+    const ParamVector2 tangent_components = raise_indices(cotangent_components);
 
-    return ParamVector3(param_vec.u(), param_vec.v(), normal_component);
+    // Return parameter space vector with normal component
+    return ParamVector3(tangent_components.u(), tangent_components.v(), normal_component);
 }
 
-WorldVector3 RiemannianMetric::pushforward_vector(
+WorldVector3 RiemannianMetric::pushforward(
     const ParamVector3& param_vec,
     const WorldVector3& world_du,
     const WorldVector3& world_dv,
@@ -181,12 +183,12 @@ WorldVector3 RiemannianMetric::pushforward_vector(
 ) const {
     verify_metric_consistency(world_du, world_dv);
 
-    // Convert tangential components to world space
+    // Convert tangent (contravariant) components to world space
     const WorldVector3 tangent_vec = 
-        world_du * param_vec.u() + 
-        world_dv * param_vec.v();
+        world_du * param_vec.u() +   // Movement in u direction
+        world_dv * param_vec.v();    // Movement in v direction
 
-    // Add normal component if present
+    // Add normal component to get full world space vector
     return tangent_vec + world_normal * param_vec.w();
 }
 

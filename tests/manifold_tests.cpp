@@ -12,7 +12,7 @@ namespace shap::test {
 
 void test_basic_manifold_operations() {
     // Create a flat patch as a simple 2D manifold
-    auto face = surfaces::create_flat_patch(
+    auto face = std::make_shared<surfaces::FlatPatch>(
         WorldPoint3(0, 0, 0),
         WorldVector3(1, 0, 0),
         WorldVector3(0, 1, 0)

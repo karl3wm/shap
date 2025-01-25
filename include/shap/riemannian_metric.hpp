@@ -1,28 +1,35 @@
 #pragma once
+#include "frame_vectors.hpp"
 #include "coord.hpp"
-#include "validation_config.hpp"
 #include <array>
 #include <cmath>
-#include <stdexcept>
 
 namespace shap {
 
-class Surface;
-
 /**
- * RiemannianMetric describes how distances and angles in parameter space (u,v) 
- * relate to distances and angles in world space (x,y,z).
+ * RiemannianMetric provides the fundamental geometric structure for measuring
+ * distances, angles, and converting between parameter and target spaces.
+ * 
+ * Key concepts from differential geometry:
+ * - Tangent vectors (contravariant) specify directions in parameter space
+ * - Cotangent vectors (covariant) measure change in target space
+ * - The metric tensor enables conversion between these dual spaces
  * 
  * For a surface embedded in 3D space:
  * - Parameter space is a 2D flat grid with coordinates (u,v)
- * - At each point (u,v), we have two fundamental vectors:
+ * - The tangent space at each point has basis vectors:
  *   ∂x/∂u: How position changes as u increases (keeping v constant)
  *   ∂x/∂v: How position changes as v increases (keeping u constant)
  * 
- * The metric components measure how these vectors interact:
+ * The metric components measure how these basis vectors interact:
  *   g11 = (∂x/∂u)•(∂x/∂u): Square of how much world distance changes per unit u
  *   g12 = (∂x/∂u)•(∂x/∂v): How u and v directions interact (0 if perpendicular)
  *   g22 = (∂x/∂v)•(∂x/∂v): Square of how much world distance changes per unit v
+ * 
+ * These components enable:
+ * - Converting between tangent and cotangent vectors (raise/lower indices)
+ * - Measuring distances and angles in parameter space
+ * - Computing geodesics through Christoffel symbols
  */
 class RiemannianMetric {
 public:
@@ -63,6 +70,10 @@ public:
      * @param j Second index (0=u, 1=v)
      * @return The metric component gij
      */
+     * @param i First index (0=u, 1=v)
+     * @param j Second index (0=u, 1=v)
+     * @return The metric component gij
+     */
     [[nodiscard]] double g(int i, int j) const noexcept;
 
     /**
@@ -84,30 +95,30 @@ public:
     [[nodiscard]] double dg_dv(int i, int j) const noexcept;
 
     /**
-     * Convert vector components from covariant to contravariant form.
-     * This is the inverse operation of lower_indices.
+     * Convert a cotangent vector (covariant components) to a tangent vector (contravariant components).
      * 
-     * In parameter space:
-     * - Covariant: Components measured along the surface (what you physically measure)
-     * - Contravariant: Components in terms of parameter changes (how much u,v to move)
+     * In differential geometry:
+     * - Tangent vectors (contravariant) specify directions in parameter space
+     * - Cotangent vectors (covariant) measure change in target space
+     * - "Raising indices" refers to converting from covariant to contravariant components
      * 
-     * @param covariant_vec Vector with covariant components
-     * @return Vector with contravariant components
+     * @param cotangent_vec Vector with covariant components in the cotangent space
+     * @return Vector with contravariant components in the tangent space
      */
-    [[nodiscard]] ParamVector2 raise_indices(const ParamVector2& covariant_vec) const;
+    [[nodiscard]] ParamVector2 raise_indices(const ParamVector2& cotangent_vec) const;
 
     /**
-     * Convert vector components from contravariant to covariant form.
-     * This is the inverse operation of raise_indices.
+     * Convert a tangent vector (contravariant components) to a cotangent vector (covariant components).
      * 
-     * In parameter space:
-     * - Contravariant: Components in terms of parameter changes (how much u,v to move)
-     * - Covariant: Components measured along the surface (what you physically measure)
+     * In differential geometry:
+     * - Tangent vectors (contravariant) transform like basis vectors under coordinate changes
+     * - Cotangent vectors (covariant) transform like differentials under coordinate changes
+     * - "Lowering indices" refers to converting from contravariant to covariant components
      * 
-     * @param contravariant_vec Vector with contravariant components
-     * @return Vector with covariant components
+     * @param tangent_vec Vector with contravariant components in the tangent space
+     * @return Vector with covariant components in the cotangent space
      */
-    [[nodiscard]] ParamVector2 lower_indices(const ParamVector2& contravariant_vec) const noexcept;
+    [[nodiscard]] ParamVector2 lower_indices(const ParamVector2& tangent_vec) const noexcept;
 
     /**
      * Compute first kind Christoffel symbols for geodesic equations.
@@ -139,44 +150,31 @@ public:
      */
     [[nodiscard]] double determinant() const noexcept;
 
-    /**
-     * Transform a world space vector to parameter space (pullback operation).
-     * This decomposes a 3D vector into tangential and normal components, then
-     * converts the tangential part to parameter space coordinates.
-     */
-    [[nodiscard]] ParamVector3 pullback_vector(
-        const WorldVector3& world_vec,
-        const WorldVector3& world_du,
-        const WorldVector3& world_dv,
-        const WorldVector3& world_normal
-    ) const;
-
-    /**
-     * Transform a parameter space vector to world space (pushforward operation).
-     * This combines tangential movement in parameter space with an optional
-     * normal component to create a full 3D vector.
-     */
-    [[nodiscard]] WorldVector3 pushforward_vector(
-        const ParamVector3& param_vec,
-        const WorldVector3& world_du,
-        const WorldVector3& world_dv,
-        const WorldVector3& world_normal
-    ) const;
-
 private:
     // Metric components (squared lengths and dot products of partial derivatives)
-    double g11_, g12_, g22_;  // Kept for compatibility with existing code
+    double g11_, g12_, g22_;
     
     // Metric derivatives (how squared lengths and dot products change)
     double dg11_du_, dg11_dv_;  // d(∂x/∂u • ∂x/∂u)/du, d(∂x/∂u • ∂x/∂u)/dv
     double dg12_du_, dg12_dv_;  // d(∂x/∂u • ∂x/∂v)/du, d(∂x/∂u • ∂x/∂v)/dv
     double dg22_du_, dg22_dv_;  // d(∂x/∂v • ∂x/∂v)/du, d(∂x/∂v • ∂x/∂v)/dv
 
-    // Verify metric consistency with surface derivatives
-    void verify_metric_consistency(
-        const WorldVector3& world_du,
-        const WorldVector3& world_dv
-    ) const;
+    // Helper to verify metric consistency with frame vectors
+    void verify_metric_consistency(const FrameVectors& frame) const {
+        const auto& du = frame.du();
+        const auto& dv = frame.dv();
+        
+        // Verify metric components match frame vectors
+        const double computed_g11 = du.dot(du);
+        const double computed_g12 = du.dot(dv);
+        const double computed_g22 = dv.dot(dv);
+
+        if (std::abs(computed_g11 - g11_) > ValidationConfig::instance().epsilon() ||
+            std::abs(computed_g12 - g12_) > ValidationConfig::instance().epsilon() ||
+            std::abs(computed_g22 - g22_) > ValidationConfig::instance().epsilon()) {
+            throw std::runtime_error("Metric components inconsistent with frame vectors");
+        }
+    }
 };
 
 } // namespace shap

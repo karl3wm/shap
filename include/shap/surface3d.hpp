@@ -21,6 +21,7 @@ using PositionFunction = std::function<WorldPoint3(const ParamPoint2&)>;
 using DerivativeFunction = std::function<WorldVector3(const ParamPoint2&)>;
 using CurvatureFunction = std::function<double(const ParamPoint2&)>;
 using ParameterSpaceDerivative = std::function<double(const ParamPoint2&)>;
+using NearestFunction = std::function<ParamPoint2(const WorldPoint3&)>;
 
 using PathSolver = std::function<std::optional<PathIntersection>(
     const WorldPoint3& world_start,
@@ -35,12 +36,11 @@ class RiemannianMetric;
  * Represents a 2D surface embedded in 3D world space.
  * Implements the Manifold interface for 2D->3D mappings.
  */
-class Surface3DImpl final : public Manifold<2, 3, WorldSpaceTag>,
-                          public std::enable_shared_from_this<Surface3DImpl> {
+class Surface3D : public Manifold<2, 3, WorldSpaceTag> {
     friend class RiemannianMetric;
 public:
     // Constructor with all required function objects
-    Surface3DImpl(
+    Surface3D(
         PositionFunction position_func,
         DerivativeFunction du_func,
         DerivativeFunction dv_func,
@@ -49,6 +49,7 @@ public:
         DerivativeFunction dvv_func,
         CurvatureFunction gaussian_func,
         CurvatureFunction mean_func,
+        NearestFunction nearest_func,
         std::optional<PathSolver> path_solver = std::nullopt,
         SurfaceType type = SurfaceType::Smooth,
         ParameterSpaceDerivative du2_du = nullptr,
@@ -58,12 +59,9 @@ public:
         ParameterSpaceDerivative dv2_du = nullptr,
         ParameterSpaceDerivative dv2_dv = nullptr
     ) : Manifold<2, 3, WorldSpaceTag>(
-            [f = position_func](const ParameterPoint& param) {
-                return f(param);
-            },
-            [du = du_func, dv = dv_func](const ParameterPoint& param, int derivative_index) {
-                return derivative_index == 0 ? du(param) : dv(param);
-            }
+            std::bind(&Surface3D::world_position, this, std::placeholders::_1),
+            std::bind(&Surface3D::world_derivative, this, std::placeholders::_1, std::placeholders::_2),
+            nearest_func
         )
       , position_func_(std::move(position_func))
       , du_func_(std::move(du_func))
@@ -89,18 +87,18 @@ public:
     }
     
     // Prevent copying
-    Surface3DImpl(const Surface3DImpl&) = delete;
-    Surface3DImpl& operator=(const Surface3DImpl&) = delete;
+    Surface3D(const Surface3D&) = delete;
+    Surface3D& operator=(const Surface3D&) = delete;
     
     // Allow moving
-    Surface3DImpl(Surface3DImpl&&) noexcept = default;
-    Surface3DImpl& operator=(Surface3DImpl&&) noexcept = default;
+    Surface3D(Surface3D&&) noexcept = default;
+    Surface3D& operator=(Surface3D&&) noexcept = default;
 
     // Implement Manifold interface
     using Manifold<2, 3, WorldSpaceTag>::evaluate;  // Use base class implementation
     
     [[nodiscard]] std::array<TargetVector, 2>
-    derivatives(const ParameterPoint& param) const override {
+    derivatives(const ParameterPoint& param) const {
         return {du_func_(param), dv_func_(param)};
     }
 
@@ -113,11 +111,6 @@ public:
         return type_;
     }
 
-    /**
-     * Convert a world space position to local coordinates.
-     */
-    [[nodiscard]] ParamPoint3 world_to_param(const WorldPoint3& pos) const;
-    
     /**
      * Create a path on the surface starting from a point in a given direction.
      */
@@ -155,6 +148,15 @@ public:
     }
 
 private:
+    // Manifold interface implementation
+    [[nodiscard]] WorldPoint3 world_position(const ParameterPoint& param) const {
+        return position_func_(param);
+    }
+
+    [[nodiscard]] WorldVector3 world_derivative(const ParameterPoint& param, int derivative_index) const {
+        return derivative_index == 0 ? du_func_(param) : dv_func_(param);
+    }
+
     // Surface functions
     PositionFunction position_func_;
     DerivativeFunction du_func_;
@@ -176,7 +178,5 @@ private:
     ParameterSpaceDerivative dv2_dv_fn_;  // d(dv·dv)/dv
 };
 
-// Type alias for backward compatibility and convenience
-using Surface3D = Surface3DImpl;
 
 } // namespace shap

@@ -54,9 +54,10 @@ public:
      * Construct from individual components.
      */
     template<typename... Args>
-    explicit Coord(Args... args) noexcept 
+    explicit Coord(Args... args)
         : coords_{static_cast<double>(args)...} {
         static_assert(sizeof...(Args) == N, "Must provide exactly N components");
+        validate();
     }
 
     // Component access
@@ -67,6 +68,23 @@ public:
     [[nodiscard]] double x() const noexcept requires std::is_same_v<SpaceTag, WorldSpaceTag> { return coords_[0]; }
     [[nodiscard]] double y() const noexcept requires std::is_same_v<SpaceTag, WorldSpaceTag> { return coords_[1]; }
     [[nodiscard]] double z() const noexcept requires (std::is_same_v<SpaceTag, WorldSpaceTag> && N == 3) { return coords_[2]; }
+
+    // Validate coordinates based on space type
+    void validate() const {
+        if constexpr (std::is_same_v<SpaceTag, ParamSpaceTag>) {
+            for (int i = 0; i < N; ++i) {
+                if (coords_[i] < 0.0 || coords_[i] > 1.0) {
+                    throw std::invalid_argument("Parameter space coordinates must be in [0,1]");
+                }
+            }
+        }
+    }
+
+    // Explicit conversion to double for 1D coordinates
+    explicit operator double() const requires (N == 1 && std::is_same_v<CoordTag, PointTag>) {
+        validate();
+        return coords_[0];
+    }
 
     // Parameter space accessors
     [[nodiscard]] double u() const noexcept requires std::is_same_v<SpaceTag, ParamSpaceTag> { return coords_[0]; }
@@ -107,6 +125,13 @@ public:
             result.coords_[i] *= scale;
         }
         return result;
+    }
+
+    ThisType& operator*=(double scale) noexcept {
+        for (int i = 0; i < N; ++i) {
+            coords_[i] *= scale;
+        }
+        return *this;
     }
 
     // Vector operations (available for vectors only)
@@ -219,5 +244,38 @@ using WorldPoint3 = Coord<3, PointTag, WorldSpaceTag>;
 using WorldVector3 = Coord<3, VectorTag, WorldSpaceTag>;
 using ParamPoint3 = Coord<3, PointTag, ParamSpaceTag>;
 using ParamVector3 = Coord<3, VectorTag, ParamSpaceTag>;
+
+// Comparison operators for 1D parameter points
+template<int N, typename SpaceTag>
+bool operator<(
+    const Coord<N, PointTag, SpaceTag>& a,
+    const Coord<N, PointTag, SpaceTag>& b
+) noexcept requires (N == 1) {
+    return static_cast<double>(a) < static_cast<double>(b);
+}
+
+template<int N, typename SpaceTag>
+bool operator<=(
+    const Coord<N, PointTag, SpaceTag>& a,
+    const Coord<N, PointTag, SpaceTag>& b
+) noexcept requires (N == 1) {
+    return static_cast<double>(a) <= static_cast<double>(b);
+}
+
+template<int N, typename SpaceTag>
+bool operator>(
+    const Coord<N, PointTag, SpaceTag>& a,
+    const Coord<N, PointTag, SpaceTag>& b
+) noexcept requires (N == 1) {
+    return static_cast<double>(a) > static_cast<double>(b);
+}
+
+template<int N, typename SpaceTag>
+bool operator>=(
+    const Coord<N, PointTag, SpaceTag>& a,
+    const Coord<N, PointTag, SpaceTag>& b
+) noexcept requires (N == 1) {
+    return static_cast<double>(a) >= static_cast<double>(b);
+}
 
 } // namespace shap

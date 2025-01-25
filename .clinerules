@@ -1,1 +1,5 @@
-Maintain and strictly adhere to docs/coding_conventions.md to ensure consistent code quality and prevent errors.
+- Maintain and strictly adhere to docs/coding_conventions.md to ensure consistent code quality and prevent errors.
+- Run builds in the build subdir.
+- Prefer to use the sed and grep commands to efficiently engage multiple files at once.
+- Remember that command output may drop some punctuation symbols.
+While this refactor is going on, do not add any polymorphism to the project, and use std::bind to leaf class members to pass functions rather than lambdas.

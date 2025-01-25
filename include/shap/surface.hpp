@@ -63,13 +63,6 @@ public:
     }
     
     /**
-     * Convert a world space position to local coordinates.
-     */
-    [[nodiscard]] ParamPoint3 world_to_param(const WorldPoint3& pos) const {
-        return impl_->world_to_param(pos);
-    }
-    
-    /**
      * Create a path on the surface starting from a point in a given direction.
      */
     [[nodiscard]] std::unique_ptr<SurfacePath> create_path(
