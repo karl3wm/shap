@@ -71,7 +71,7 @@ public:
 
     // Validate coordinates based on space type
     void validate() const {
-        if constexpr (std::is_same_v<SpaceTag, ParamSpaceTag>) {
+        if constexpr (std::is_same_v<SpaceTag, ParamSpaceTag> && std::is_same_v<CoordTag, PointTag>) {
             for (int i = 0; i < N; ++i) {
                 if (coords_[i] < 0.0 || coords_[i] > 1.0) {
                     throw std::invalid_argument("Parameter space coordinates must be in [0,1]");
